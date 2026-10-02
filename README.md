@@ -1,6 +1,6 @@
 # manza-rust
 
-Rust SDK for the [Manza](https://manza.finance) API.
+Rust SDK for the [Manza](https://get-manza.com) API.
 
 ```toml
 # Cargo.toml
