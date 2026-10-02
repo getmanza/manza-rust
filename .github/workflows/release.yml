@@ -46,11 +46,13 @@ jobs:
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
       - name: Verify tag matches crate version
+        env:
+          TAG: ${{ github.ref_name }}
         run: |
           CRATE_VERSION=$(cargo metadata --no-deps --format-version 1 | python3 -c "import json,sys; print(json.load(sys.stdin)['packages'][0]['version'])")
-          TAG_VERSION="${GITHUB_REF#refs/tags/v}"
+          TAG_VERSION="${TAG#v}"
           if [[ "$TAG_VERSION" != "$CRATE_VERSION" ]]; then
-            echo "Tag v$TAG_VERSION does not match crate version $CRATE_VERSION" >&2
+            echo "::error::Tag v$TAG_VERSION does not match Cargo.toml version $CRATE_VERSION"
             exit 1
           fi
       - uses: rust-lang/crates-io-auth-action@v1

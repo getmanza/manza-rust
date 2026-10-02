@@ -68,3 +68,11 @@ cargo test
 - [zazu-python](https://github.com/getzazu/zazu-python)
 - [zazu-go](https://github.com/getzazu/zazu-go)
 - [cli](https://github.com/getzazu/cli)
+
+## Releasing
+
+```bash
+bin/release list        # last releases + what patch/minor/major would give
+bin/release --dry-run   # version + changes since the last tag, publishes nothing
+bin/release minor       # or patch (default), major, an explicit 0.3.0; --force re-creates
+```
