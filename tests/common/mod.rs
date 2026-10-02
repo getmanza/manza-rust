@@ -6,6 +6,9 @@
 //! Matching is method + path+query + semantic JSON body (serde_json maps
 //! don't preserve Ruby's insertion order, so byte-equality against the
 //! recorded bodies would never hold). The recorded host is ignored.
+//! `ReplayServer::start_ignoring_signature` is the one exception: the
+//! authorize cassettes compare the body with `signature` removed, because
+//! the recorded HMAC cannot be reproduced on replay.
 
 use std::path::Path;
 use std::sync::Arc;
@@ -56,6 +59,66 @@ const FIXTURE_IDS: &[(&str, &str)] = &[
         "ZAZU_FIXTURE_TRANSFER_DRAFT_ID",
         "fixture-transfer-draft-id",
     ),
+    // The discovered beneficiary's default bank account, marked a trusted
+    // payee once by hand so machine-authorized drafts can target it.
+    (
+        "ZAZU_FIXTURE_TRUSTED_EXTERNAL_ACCOUNT_ID",
+        "fixture-trusted-external-account-id",
+    ),
+    (
+        "ZAZU_FIXTURE_CREATED_BENEFICIARY_ID",
+        "fixture-created-beneficiary-id",
+    ),
+    (
+        "ZAZU_FIXTURE_EXTERNAL_ACCOUNT_ID",
+        "fixture-external-account-id",
+    ),
+    // Not an ID, but fresh per seed (bank account numbers are unique per
+    // entity) and scrubbed the same way.
+    (
+        "ZAZU_FIXTURE_NEW_ACCOUNT_NUMBER",
+        "fixture-new-account-number",
+    ),
+    (
+        "ZAZU_FIXTURE_PAYEE_TRUST_REQUEST_ID",
+        "fixture-payee-trust-request-id",
+    ),
+    // client_reference is unique per entity, so these are fresh per seed too.
+    ("ZAZU_FIXTURE_CLIENT_REFERENCE", "fixture-client-reference"),
+    (
+        "ZAZU_FIXTURE_AUTHORIZABLE_CLIENT_REFERENCE",
+        "fixture-authorizable-client-reference",
+    ),
+    (
+        "ZAZU_FIXTURE_AUTHORIZABLE_DRAFT_ID",
+        "fixture-authorizable-draft-id",
+    ),
+    (
+        "ZAZU_FIXTURE_DECLINABLE_DRAFT_ID",
+        "fixture-declinable-draft-id",
+    ),
+    (
+        "ZAZU_FIXTURE_BAD_SIGNATURE_DRAFT_ID",
+        "fixture-bad-signature-draft-id",
+    ),
+    (
+        "ZAZU_FIXTURE_AUTHORIZABLE_AUTHORIZATION_ID",
+        "fixture-authorizable-authorization-id",
+    ),
+    (
+        "ZAZU_FIXTURE_DECLINABLE_AUTHORIZATION_ID",
+        "fixture-declinable-authorization-id",
+    ),
+    (
+        "ZAZU_FIXTURE_BAD_SIGNATURE_AUTHORIZATION_ID",
+        "fixture-bad-signature-authorization-id",
+    ),
+    // One-time nonce from the authorization webhook. Only needed while
+    // recording; it never appears in a request or response.
+    (
+        "ZAZU_FIXTURE_AUTHORIZABLE_NONCE",
+        "fixture-authorizable-nonce",
+    ),
 ];
 
 pub fn fixture_id(env_var: &str) -> &'static str {
@@ -86,6 +149,16 @@ impl ReplayServer {
     /// their interactions. Unmatched requests get a 501 whose error message
     /// surfaces in the test failure.
     pub fn start(names: &[&str]) -> ReplayServer {
+        Self::start_with(names, false)
+    }
+
+    /// Like [`start`](Self::start), but compares request bodies with the
+    /// `signature` key removed (the authorize cassettes).
+    pub fn start_ignoring_signature(names: &[&str]) -> ReplayServer {
+        Self::start_with(names, true)
+    }
+
+    fn start_with(names: &[&str], ignore_signature: bool) -> ReplayServer {
         let mut interactions = Vec::new();
         for name in names {
             let path = Path::new("testdata/cassettes").join(format!("{name}.yml"));
@@ -112,7 +185,10 @@ impl ReplayServer {
                 let mut body = String::new();
                 let _ = request.as_reader().read_to_string(&mut body);
 
-                match interactions.iter().find(|i| matches(i, &request, &body)) {
+                match interactions
+                    .iter()
+                    .find(|i| matches(i, &request, &body, ignore_signature))
+                {
                     Some(interaction) => {
                         let response =
                             tiny_http::Response::from_string(interaction.response_body.clone())
@@ -160,7 +236,12 @@ impl Drop for ReplayServer {
     }
 }
 
-fn matches(interaction: &Interaction, request: &tiny_http::Request, body: &str) -> bool {
+fn matches(
+    interaction: &Interaction,
+    request: &tiny_http::Request,
+    body: &str,
+    ignore_signature: bool,
+) -> bool {
     if !interaction
         .method
         .eq_ignore_ascii_case(request.method().as_str())
@@ -176,7 +257,23 @@ fn matches(interaction: &Interaction, request: &tiny_http::Request, body: &str) 
         return false;
     }
 
+    if ignore_signature {
+        return without_signature(&interaction.body) == without_signature(body);
+    }
     json_equal(&interaction.body, body)
+}
+
+/// Parses a body as JSON and drops the top-level `signature` key. Bodies
+/// that are not JSON objects compare as-is.
+fn without_signature(body: &str) -> Result<serde_json::Value, String> {
+    match serde_json::from_str::<serde_json::Value>(body) {
+        Ok(serde_json::Value::Object(mut map)) => {
+            map.remove("signature");
+            Ok(serde_json::Value::Object(map))
+        }
+        Ok(other) => Ok(other),
+        Err(_) => Err(body.to_owned()),
+    }
 }
 
 /// Compares two bodies semantically when both parse as JSON, and

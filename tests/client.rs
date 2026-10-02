@@ -33,3 +33,17 @@ fn list_limit_validation() {
         "expected Error::Configuration, got {err:?}"
     );
 }
+
+#[test]
+fn default_base_url_is_production() {
+    std::env::remove_var("ZAZU_BASE_URL");
+
+    let client = Client::builder()
+        .api_key("test")
+        .build()
+        .expect("build client");
+    assert!(
+        format!("{client:?}").contains("https://ma.manza.finance"),
+        "got {client:?}"
+    );
+}

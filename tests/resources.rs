@@ -5,7 +5,8 @@ mod common;
 
 use common::{fixture_id, ReplayServer};
 use serde_json::json;
-use zazu_sdk::Client;
+use zazu_sdk::transfer_authorization::{payee_for, sign, signature_input};
+use zazu_sdk::{Client, Error, ErrorKind};
 
 fn replay_client(server: &ReplayServer) -> Client {
     Client::builder()
@@ -158,7 +159,7 @@ fn webhook_endpoints() {
 }
 
 #[test]
-fn transfer_drafts() {
+fn transfer_drafts_create_and_get() {
     let server = ReplayServer::start(&["transfer_drafts/create", "transfer_drafts/get"]);
     let client = replay_client(&server);
 
@@ -169,15 +170,16 @@ fn transfer_drafts() {
             "beneficiary_id": fixture_id("ZAZU_FIXTURE_BENEFICIARY_ID"),
             "amount": "150.00",
             "payment_reference": "SDK fixture",
+            "client_reference": fixture_id("ZAZU_FIXTURE_CLIENT_REFERENCE"),
         }))
         .expect("transfer drafts create");
     assert_eq!(resp.status, 201, "expected 201, got {}", resp.status);
+    assert_eq!(resp.body["status"].as_str(), Some("requested"));
     assert_eq!(
-        resp.body["status"].as_str(),
-        Some("requested"),
-        "expected requested status (awaiting in-app approval), got {:?}",
-        resp.body["status"]
+        resp.body["client_reference"].as_str(),
+        Some(fixture_id("ZAZU_FIXTURE_CLIENT_REFERENCE"))
     );
+    assert!(resp.body.get("authorization").is_some());
     assert!(
         resp.body["transfer"].is_null(),
         "expected null transfer before approval, got {:?}",
@@ -188,10 +190,182 @@ fn transfer_drafts() {
         .transfer_drafts()
         .get(fixture_id("ZAZU_FIXTURE_TRANSFER_DRAFT_ID"))
         .expect("transfer drafts get");
+    assert!(got.body["id"].is_string());
+    assert!(got.body.get("status").is_some());
+    assert!(got.body.get("transfer").is_some());
+}
+
+#[test]
+fn transfer_drafts_create_duplicate() {
+    let server = ReplayServer::start(&["transfer_drafts/create_duplicate"]);
+    let client = replay_client(&server);
+
+    let err = client
+        .transfer_drafts()
+        .create(&json!({
+            "account_id": fixture_id("ZAZU_FIXTURE_ACCOUNT_ID"),
+            "beneficiary_id": fixture_id("ZAZU_FIXTURE_BENEFICIARY_ID"),
+            "amount": "10.00",
+            "client_reference": fixture_id("ZAZU_FIXTURE_AUTHORIZABLE_CLIENT_REFERENCE"),
+        }))
+        .expect_err("expected a conflict");
+    let Error::Api(e) = err else {
+        panic!("expected Error::Api, got {err:?}")
+    };
+    assert_eq!(e.kind, ErrorKind::Conflict);
+    assert_eq!(e.error_type.as_deref(), Some("duplicate_client_reference"));
+    assert_eq!(
+        e.payment_id.as_deref(),
+        Some(fixture_id("ZAZU_FIXTURE_AUTHORIZABLE_DRAFT_ID"))
+    );
+}
+
+#[test]
+fn transfer_drafts_authorize_blank_signature_fails_locally() {
+    // Nothing listens on this port: a request would be a Connection error.
+    let client = Client::builder()
+        .api_key("test")
+        .base_url("http://127.0.0.1:1")
+        .build()
+        .expect("build client");
+
+    for signature in ["", " ", "\t\n"] {
+        let err = client
+            .transfer_drafts()
+            .authorize("draft", "auth", signature)
+            .expect_err("expected an argument error");
+        assert!(
+            matches!(&err, Error::Configuration(m) if m.contains("signature")),
+            "got {err:?}"
+        );
+    }
+}
+
+// Order matters while recording (five consecutive bad signatures suspend the
+// authorizer), but replay is order-free: each test loads exactly one
+// cassette, and the authorize cassettes match the body minus `signature`.
+#[test]
+fn transfer_drafts_authorize_bad_signature() {
+    let server =
+        ReplayServer::start_ignoring_signature(&["transfer_drafts/authorize_bad_signature"]);
+    let client = replay_client(&server);
+
+    let err = client
+        .transfer_drafts()
+        .authorize(
+            fixture_id("ZAZU_FIXTURE_BAD_SIGNATURE_DRAFT_ID"),
+            fixture_id("ZAZU_FIXTURE_BAD_SIGNATURE_AUTHORIZATION_ID"),
+            &"0".repeat(64),
+        )
+        .expect_err("expected invalid_signature");
+    let Error::Api(e) = err else {
+        panic!("expected Error::Api, got {err:?}")
+    };
+    assert_eq!(e.kind, ErrorKind::Validation);
+    assert_eq!(e.error_type.as_deref(), Some("invalid_signature"));
+}
+
+#[test]
+fn transfer_drafts_authorize_same_key() {
+    let server = ReplayServer::start_ignoring_signature(&["transfer_drafts/authorize_same_key"]);
+    let client = replay_client(&server);
+
+    let err = client
+        .transfer_drafts()
+        .authorize(
+            fixture_id("ZAZU_FIXTURE_AUTHORIZABLE_DRAFT_ID"),
+            fixture_id("ZAZU_FIXTURE_AUTHORIZABLE_AUTHORIZATION_ID"),
+            &"0".repeat(64),
+        )
+        .expect_err("expected same_key_forbidden");
+    let Error::Api(e) = err else {
+        panic!("expected Error::Api, got {err:?}")
+    };
+    assert_eq!(e.kind, ErrorKind::Forbidden);
+    assert_eq!(e.error_type.as_deref(), Some("same_key_forbidden"));
+}
+
+#[test]
+fn transfer_drafts_authorize() {
+    let server = ReplayServer::start_ignoring_signature(&["transfer_drafts/authorize"]);
+    let client = replay_client(&server);
+
+    let draft_id = fixture_id("ZAZU_FIXTURE_AUTHORIZABLE_DRAFT_ID");
+    let payee = payee_for(
+        Some(fixture_id("ZAZU_FIXTURE_TRUSTED_EXTERNAL_ACCOUNT_ID")),
+        None,
+    )
+    .unwrap();
+    let input = signature_input(
+        draft_id,
+        fixture_id("ZAZU_FIXTURE_AUTHORIZABLE_NONCE"),
+        "10.0",
+        "MAD",
+        fixture_id("ZAZU_FIXTURE_ACCOUNT_ID"),
+        &payee,
+        Some(fixture_id("ZAZU_FIXTURE_AUTHORIZABLE_CLIENT_REFERENCE")),
+    );
+
+    let resp = client
+        .transfer_drafts()
+        .authorize(
+            draft_id,
+            fixture_id("ZAZU_FIXTURE_AUTHORIZABLE_AUTHORIZATION_ID"),
+            &sign("replay-signing-secret", &input),
+        )
+        .expect("transfer drafts authorize");
+    assert_eq!(resp.status, 200);
+    assert_eq!(resp.body["id"].as_str(), Some(draft_id));
+    assert_eq!(
+        resp.body["authorization"]["status"].as_str(),
+        Some("authorized")
+    );
+}
+
+#[test]
+fn transfer_drafts_decline() {
+    let server = ReplayServer::start(&["transfer_drafts/decline"]);
+    let client = replay_client(&server);
+
+    let resp = client
+        .transfer_drafts()
+        .decline(
+            fixture_id("ZAZU_FIXTURE_DECLINABLE_DRAFT_ID"),
+            fixture_id("ZAZU_FIXTURE_DECLINABLE_AUTHORIZATION_ID"),
+            Some("SDK fixture"),
+        )
+        .expect("transfer drafts decline");
+    assert_eq!(resp.status, 200);
+    assert_eq!(
+        resp.body["id"].as_str(),
+        Some(fixture_id("ZAZU_FIXTURE_DECLINABLE_AUTHORIZATION_ID"))
+    );
+    assert_eq!(resp.body["status"].as_str(), Some("declined"));
+    assert!(resp.body["declined_at"].is_string());
+}
+
+#[test]
+fn transfer_drafts_decline_omits_absent_reason() {
+    // The decline cassette records a body with `reason`; a call without one
+    // must not match it, proving the key is left out rather than nulled.
+    let server = ReplayServer::start(&["transfer_drafts/decline"]);
+    let client = replay_client(&server);
+
+    let err = client
+        .transfer_drafts()
+        .decline(
+            fixture_id("ZAZU_FIXTURE_DECLINABLE_DRAFT_ID"),
+            fixture_id("ZAZU_FIXTURE_DECLINABLE_AUTHORIZATION_ID"),
+            None,
+        )
+        .expect_err("body differs from the recorded one");
+    let Error::Api(e) = err else {
+        panic!("expected Error::Api, got {err:?}")
+    };
     assert!(
-        got.body["status"].is_string(),
-        "expected string status, got {:?}",
-        got.body["status"]
+        e.message.contains("authorization_id") && !e.message.contains("reason"),
+        "unexpected request body: {}",
+        e.message
     );
 }
 
@@ -215,9 +389,104 @@ fn beneficiaries() {
         .beneficiaries()
         .get(fixture_id("ZAZU_FIXTURE_BENEFICIARY_ID"))
         .expect("beneficiaries get");
-    assert!(
-        resp.body["id"].is_string(),
-        "expected string id, got {:?}",
-        resp.body["id"]
+    assert!(resp.body["id"].is_string());
+    assert!(resp.body["external_accounts"].is_array());
+}
+
+#[test]
+fn beneficiaries_create() {
+    let server = ReplayServer::start(&["beneficiaries/create"]);
+    let client = replay_client(&server);
+
+    let resp = client
+        .beneficiaries()
+        .create(&json!({
+            "beneficiary_type": "business",
+            "company_name": "Zazu Fixture Beneficiary - spec (zazu-ruby-fixture)",
+            "email": "fixture-beneficiary-spec@example.com",
+        }))
+        .expect("beneficiaries create");
+    assert_eq!(resp.status, 201);
+    assert_eq!(resp.body["beneficiary_type"].as_str(), Some("business"));
+    assert_eq!(resp.body["external_accounts"], json!([]));
+}
+
+#[test]
+fn beneficiaries_external_accounts() {
+    let server = ReplayServer::start(&[
+        "beneficiaries/list_external_accounts",
+        "beneficiaries/get_external_account",
+    ]);
+    let client = replay_client(&server);
+    let beneficiary_id = fixture_id("ZAZU_FIXTURE_CREATED_BENEFICIARY_ID");
+    let account_id = fixture_id("ZAZU_FIXTURE_EXTERNAL_ACCOUNT_ID");
+
+    let page = client
+        .beneficiaries()
+        .list_external_accounts(beneficiary_id, Default::default())
+        .expect("list external accounts");
+    assert_eq!(page.data[0]["id"].as_str(), Some(account_id));
+    assert!(page.data[0]["account_number"].is_string());
+    assert!(!page.has_more);
+
+    let resp = client
+        .beneficiaries()
+        .get_external_account(beneficiary_id, account_id)
+        .expect("get external account");
+    assert_eq!(resp.body["id"].as_str(), Some(account_id));
+    assert!(resp.body.get("default").is_some());
+}
+
+#[test]
+fn beneficiaries_create_external_account() {
+    let server = ReplayServer::start(&["beneficiaries/create_external_account"]);
+    let client = replay_client(&server);
+
+    let resp = client
+        .beneficiaries()
+        .create_external_account(
+            fixture_id("ZAZU_FIXTURE_CREATED_BENEFICIARY_ID"),
+            &json!({
+                "account_number": fixture_id("ZAZU_FIXTURE_NEW_ACCOUNT_NUMBER"),
+                "name": "Fixture Secondary Account",
+            }),
+        )
+        .expect("create external account");
+    assert_eq!(resp.status, 201);
+    assert_eq!(
+        resp.body["name"].as_str(),
+        Some("Fixture Secondary Account")
     );
+    assert_eq!(resp.body["default"], json!(false));
+}
+
+#[test]
+fn payee_trust_requests() {
+    let server = ReplayServer::start(&["payee_trust_requests/create"]);
+    let client = replay_client(&server);
+
+    let resp = client
+        .payee_trust_requests()
+        .create(&[fixture_id("ZAZU_FIXTURE_EXTERNAL_ACCOUNT_ID")])
+        .expect("payee trust requests create");
+    assert_eq!(resp.status, 201);
+    assert_eq!(resp.body["status"].as_str(), Some("pending"));
+    assert_eq!(
+        resp.body["external_account_ids"],
+        json!([fixture_id("ZAZU_FIXTURE_EXTERNAL_ACCOUNT_ID")])
+    );
+}
+
+#[test]
+fn payee_trust_requests_get() {
+    let server = ReplayServer::start(&["payee_trust_requests/get"]);
+    let client = replay_client(&server);
+
+    let id = fixture_id("ZAZU_FIXTURE_PAYEE_TRUST_REQUEST_ID");
+    let resp = client
+        .payee_trust_requests()
+        .get(id)
+        .expect("payee trust requests get");
+    assert_eq!(resp.body["id"].as_str(), Some(id));
+    assert!(resp.body["resolved_at"].is_null());
 }
