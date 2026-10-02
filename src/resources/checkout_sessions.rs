@@ -10,7 +10,10 @@ pub struct CheckoutSessions<'a> {
 
 impl CheckoutSessions<'_> {
     /// Calls `POST /api/checkout_sessions`.
-    /// Required attributes: `account_id`, `amount`, `success_url`.
+    /// Required attributes: `account_id`, `amount`, `success_url`. Optional:
+    /// `customer_name`, `collect_billing_address` and `billing_address`. The
+    /// response gains `settled_at` and `transaction`, and the status can be
+    /// `clearing`.
     pub fn create(&self, attributes: &Attributes) -> Result<Response, Error> {
         self.client.post("api/checkout_sessions", Some(attributes))
     }

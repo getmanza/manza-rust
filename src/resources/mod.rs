@@ -1,4 +1,4 @@
-//! The nine API resources. Each hangs off [`Client`](crate::Client) as an
+//! The ten API resources. Each hangs off [`Client`](crate::Client) as an
 //! accessor method (`client.accounts()`, `client.invoices()`, ...).
 
 mod accounts;
@@ -7,6 +7,7 @@ mod checkout_sessions;
 mod customers;
 mod entity;
 mod invoices;
+mod payee_trust_requests;
 mod payment_links;
 mod transfer_drafts;
 mod webhook_endpoints;
@@ -17,6 +18,7 @@ pub use checkout_sessions::CheckoutSessions;
 pub use customers::{CustomerListParams, Customers};
 pub use entity::Entity;
 pub use invoices::{InvoiceListParams, Invoices};
+pub use payee_trust_requests::PayeeTrustRequests;
 pub use payment_links::{PaymentLinkListParams, PaymentLinks};
 pub use transfer_drafts::TransferDrafts;
 pub use webhook_endpoints::WebhookEndpoints;

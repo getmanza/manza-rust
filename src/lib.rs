@@ -31,6 +31,6 @@ pub use error::{ApiError, Error, ErrorKind};
 pub use page::{ListParams, Page, MAX_PER_PAGE};
 pub use resources::{
     AccountListParams, Accounts, Attributes, Beneficiaries, CheckoutSessions, CustomerListParams,
-    Customers, Entity, InvoiceListParams, Invoices, PaymentLinkListParams, PaymentLinks,
-    TransactionListParams, TransferDrafts, WebhookEndpoints,
+    Customers, Entity, InvoiceListParams, Invoices, PayeeTrustRequests, PaymentLinkListParams,
+    PaymentLinks, TransactionListParams, TransferDrafts, WebhookEndpoints,
 };

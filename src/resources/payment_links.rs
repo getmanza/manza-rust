@@ -34,7 +34,9 @@ impl PaymentLinks<'_> {
             .get(&format!("api/payment_links/{}", encode_component(id)), &[])
     }
 
-    /// Calls `POST /api/payment_links`.
+    /// Calls `POST /api/payment_links`. Optional: `collect_billing_address`
+    /// and `billing_address`. The response gains `settled_at`, and the
+    /// status can be `clearing`.
     pub fn create(&self, attributes: &Attributes) -> Result<Response, Error> {
         self.client.post("api/payment_links", Some(attributes))
     }
