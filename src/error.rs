@@ -9,7 +9,9 @@ pub enum ErrorKind {
     Forbidden,
     /// 404
     NotFound,
-    /// 422
+    /// 409
+    Conflict,
+    /// 400, 422
     Validation,
     /// 429
     RateLimit,
@@ -21,12 +23,13 @@ pub enum ErrorKind {
 
 impl ErrorKind {
     /// The kind as its wire-format string (`authentication`, `forbidden`,
-    /// `not_found`, `validation`, `rate_limit`, `server`, `api`).
+    /// `not_found`, `conflict`, `validation`, `rate_limit`, `server`, `api`).
     pub fn as_str(&self) -> &'static str {
         match self {
             ErrorKind::Authentication => "authentication",
             ErrorKind::Forbidden => "forbidden",
             ErrorKind::NotFound => "not_found",
+            ErrorKind::Conflict => "conflict",
             ErrorKind::Validation => "validation",
             ErrorKind::RateLimit => "rate_limit",
             ErrorKind::Server => "server",
@@ -39,7 +42,8 @@ impl ErrorKind {
             401 => ErrorKind::Authentication,
             403 => ErrorKind::Forbidden,
             404 => ErrorKind::NotFound,
-            422 => ErrorKind::Validation,
+            409 => ErrorKind::Conflict,
+            400 | 422 => ErrorKind::Validation,
             429 => ErrorKind::RateLimit,
             500.. => ErrorKind::Server,
             _ => ErrorKind::Api,
@@ -68,6 +72,9 @@ pub struct ApiError {
     pub message: String,
     /// The API's `error.param` field.
     pub param: Option<String>,
+    /// The API's `error.payment_id` field: the existing transfer draft on a
+    /// `duplicate_client_reference` conflict (409).
+    pub payment_id: Option<String>,
     /// The `X-Request-Id` response header.
     pub request_id: Option<String>,
     /// Seconds from the `Retry-After` header; only set for `rate_limit`.
@@ -130,6 +137,7 @@ pub(crate) fn new_api_error(
         error_type: field("type"),
         message,
         param: field("param"),
+        payment_id: field("payment_id"),
         request_id,
         retry_after: if kind == ErrorKind::RateLimit {
             retry_after

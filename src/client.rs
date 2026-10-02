@@ -5,14 +5,14 @@ use serde_json::Value;
 
 use crate::error::{new_api_error, Error};
 use crate::resources::{
-    Accounts, Beneficiaries, CheckoutSessions, Customers, Entity, Invoices, PaymentLinks,
-    TransferDrafts, WebhookEndpoints,
+    Accounts, Beneficiaries, CheckoutSessions, Customers, Entity, Invoices, PayeeTrustRequests,
+    PaymentLinks, TransferDrafts, WebhookEndpoints,
 };
 
 /// The SDK version, sent in the `User-Agent` header.
 pub const VERSION: &str = "0.2.1";
 
-const DEFAULT_BASE_URL: &str = "https://zazu.ma";
+const DEFAULT_BASE_URL: &str = "https://ma.manza.finance";
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// The SDK entry point. Resources hang off it as accessor methods.
@@ -61,7 +61,8 @@ impl ClientBuilder {
         self
     }
 
-    /// Sets the API base URL (default: `ZAZU_BASE_URL` or `https://zazu.ma`).
+    /// Sets the API base URL (default: `ZAZU_BASE_URL` or `https://ma.manza.finance`; use
+    /// `https://za.manza.finance` for South Africa).
     pub fn base_url(mut self, url: impl Into<String>) -> Self {
         self.base_url = Some(url.into());
         self
@@ -266,7 +267,7 @@ impl Client {
         Accounts { client: self }
     }
 
-    /// Read-only directory of saved transfer recipients.
+    /// Saved transfer recipients and their bank accounts.
     pub fn beneficiaries(&self) -> Beneficiaries<'_> {
         Beneficiaries { client: self }
     }
@@ -289,6 +290,11 @@ impl Client {
     /// Invoices and their lifecycle actions.
     pub fn invoices(&self) -> Invoices<'_> {
         Invoices { client: self }
+    }
+
+    /// Requests to mark beneficiary bank accounts as trusted payees.
+    pub fn payee_trust_requests(&self) -> PayeeTrustRequests<'_> {
+        PayeeTrustRequests { client: self }
     }
 
     /// Standalone payment links (not attached to an invoice).

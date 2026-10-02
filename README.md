@@ -32,6 +32,43 @@ let draft = client.transfer_drafts().create(&json!({
 }))?;
 ```
 
+## Hosts
+
+The default base URL is production, `https://ma.manza.finance`. For South
+Africa use `https://za.manza.finance`; the test cassettes are recorded against
+`https://ma.manza.dev`. Override with `ClientBuilder::base_url` or
+`ZAZU_BASE_URL`.
+
+## Resources
+
+`accounts`, `beneficiaries` (including `create` and the external-account
+methods), `checkout_sessions`, `customers`, `entity`, `invoices`,
+`payee_trust_requests`, `payment_links`, `transfer_drafts` (`create`, `get`,
+`authorize`, `decline`) and `webhook_endpoints`.
+
+## Machine authorization
+
+A transfer draft inside your machine-authorization envelope is sent to your
+enrolled authorizer as a `payment.authorization_requested` webhook. Sign it
+from your *own* record of the transfer and answer with an API key other than
+the one that created the draft:
+
+```rust
+use zazu_sdk::transfer_authorization::{payee_for, sign, signature_input};
+
+let payee = payee_for(Some(external_account_id), None)?;
+let input = signature_input(
+    draft_id, nonce, "2500.0", "MAD", account_id, &payee, Some("po_1"),
+);
+let signature = sign(signing_secret, &input);
+authorizer.transfer_drafts().authorize(draft_id, authorization_id, &signature)?;
+// or: authorizer.transfer_drafts().decline(draft_id, authorization_id, Some("reason"))?;
+```
+
+`amount` is the API's decimal string verbatim. `authorize` refuses a blank
+signature locally (`Error::Configuration`), because the API counts it as a
+failed attempt.
+
 ## Response shape
 
 Response bodies are returned as-is from the API — `snake_case` keys in an
@@ -42,9 +79,9 @@ contract is one-to-one.
 ## Errors
 
 Non-2xx responses come back as `zazu_sdk::Error::Api` carrying `status`,
-`kind` (`authentication`, `forbidden`, `not_found`, `validation`,
+`kind` (`authentication`, `forbidden`, `not_found`, `conflict`, `validation`,
 `rate_limit`, `server`, `api`), the API's `error_type`/`message`/`param`,
-the `request_id`, and `retry_after` for 429s. Transport failures are
+the `payment_id` (on a 409 `duplicate_client_reference`), the `request_id`, and `retry_after` for 429s. Transport failures are
 `Error::Connection`; client-build and invalid-argument failures are
 `Error::Configuration`.
 
