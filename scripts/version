@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # bin/release adapter: print the current version, or write a new one into every
-# tracked file that carries it (Cargo.toml, the zazu-sdk entry in Cargo.lock, and
+# tracked file that carries it (Cargo.toml, the manza entry in Cargo.lock, and
 # the VERSION constant in src/client.rs).
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -20,7 +20,7 @@ awk -v v="$new" '
 
 # Cargo.lock: bump only the crate's own entry.
 awk -v v="$new" '
-  /^name = / { own = ($0 == "name = \"zazu-sdk\"") }
+  /^name = / { own = ($0 == "name = \"manza\"") }
   own && /^version = "/ { print "version = \"" v "\""; own = 0; next }
   { print }
 ' Cargo.lock > Cargo.lock.tmp && mv Cargo.lock.tmp Cargo.lock

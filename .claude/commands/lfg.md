@@ -63,7 +63,7 @@ cargo test --test resources transfer_drafts_authorize   # one integration test, 
 cargo test --test transfer_authorization                # one test file
 ```
 
-**Never call a live Zazu/Manza API** from tests, scripts or this session. Tests replay zazu-ruby's cassettes only (`ReplayServer` in `tests/common/mod.rs`); live staging calls create real transfers and approval requests for the team. Only zazu-ruby records cassettes. If a test needs a request shape the cassettes lack, the change starts in zazu-ruby (new cassette, new release), not here.
+**Never call a live Manza API** from tests, scripts or this session. Tests replay manza-ruby's cassettes only (`ReplayServer` in `tests/common/mod.rs`); live staging calls create real transfers and approval requests for the team. Only manza-ruby records cassettes. If a test needs a request shape the cassettes lack, the change starts in manza-ruby (new cassette, new release), not here.
 
 ### 4.2 Minimum implementation
 
@@ -120,7 +120,7 @@ For bug fixes, investigate before implementing:
 All must pass before committing:
 
 ```bash
-scripts/fetch-cassettes.sh           # once, and whenever zazu-ruby ships a new release
+scripts/fetch-cassettes.sh           # once, and whenever manza-ruby ships a new release
 cargo fmt --check
 cargo clippy --all-targets -- -D warnings
 cargo test

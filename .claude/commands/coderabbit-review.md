@@ -118,7 +118,7 @@ gh api repos/{owner}/{repo}/pulls/<PR>/comments \
 CodeRabbit doesn't know:
 - The Karpathy guidelines we follow (no speculative abstractions, surgical changes).
 - Our snake_case wire format decision — it sometimes suggests camelCasing or typed structs. Bodies are untyped `serde_json::Value` on purpose.
-- That zazu-ruby is the reference implementation — sometimes it suggests "improvements" that would diverge from the shared contract (error kinds, signer vectors, cassette matching).
+- That manza-ruby is the reference implementation — sometimes it suggests "improvements" that would diverge from the shared contract (error kinds, signer vectors, cassette matching).
 - The cassette-replay contract — it might suggest mocking HTTP or calling a live API, which breaks parity with the other SDKs and creates real transfers on staging. Never accept that.
 
 When CodeRabbit suggests something that would violate one of these, push back with a one-line explanation. Don't capitulate to keep the PR quiet.

@@ -1,11 +1,11 @@
 //! Fixed test vectors, shared by every SDK in the family (see
-//! zazu-ruby's spec/zazu/transfer_authorization_spec.rb). Digests were
+//! manza-ruby's spec/manza/transfer_authorization_spec.rb). Digests were
 //! computed independently with:
 //!
 //!   printf '%s' '<input>' | openssl dgst -sha256 -hmac 'whsec_test_vector_secret'
 
-use zazu_sdk::transfer_authorization::{payee_for, sign, signature_input};
-use zazu_sdk::Error;
+use manza::transfer_authorization::{payee_for, sign, signature_input};
+use manza::Error;
 
 const SECRET: &str = "whsec_test_vector_secret";
 const PAYMENT_ID: &str = "0199a1b2-0000-7000-8000-000000000001";

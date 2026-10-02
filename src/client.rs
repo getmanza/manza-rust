@@ -3,6 +3,7 @@ use std::time::Duration;
 
 use serde_json::Value;
 
+use crate::env::env_setting;
 use crate::error::{new_api_error, Error};
 use crate::resources::{
     Accounts, Beneficiaries, CheckoutSessions, Customers, Entity, Invoices, PayeeTrustRequests,
@@ -18,9 +19,9 @@ const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 /// The SDK entry point. Resources hang off it as accessor methods.
 ///
 /// ```no_run
-/// let client = zazu_sdk::Client::builder().api_key("sk_live_...").build()?;
+/// let client = manza::Client::builder().api_key("sk_live_...").build()?;
 /// let page = client.accounts().list(Default::default())?;
-/// # Ok::<(), zazu_sdk::Error>(())
+/// # Ok::<(), manza::Error>(())
 /// ```
 #[derive(Clone)]
 pub struct Client {
@@ -55,20 +56,20 @@ pub struct ClientBuilder {
 }
 
 impl ClientBuilder {
-    /// Sets the API key (default: the `ZAZU_API_KEY` env var).
+    /// Sets the API key (default: the `MANZA_API_KEY` env var).
     pub fn api_key(mut self, key: impl Into<String>) -> Self {
         self.api_key = Some(key.into());
         self
     }
 
-    /// Sets the API base URL (default: `ZAZU_BASE_URL` or `https://ma.manza.finance`; use
+    /// Sets the API base URL (default: `MANZA_BASE_URL` or `https://ma.manza.finance`; use
     /// `https://za.manza.finance` for South Africa).
     pub fn base_url(mut self, url: impl Into<String>) -> Self {
         self.base_url = Some(url.into());
         self
     }
 
-    /// Pins the `Zazu-Version` request header (default: `ZAZU_API_VERSION`).
+    /// Pins the `Manza-Version` request header (default: `MANZA_API_VERSION`).
     pub fn api_version(mut self, version: impl Into<String>) -> Self {
         self.api_version = Some(version.into());
         self
@@ -81,26 +82,26 @@ impl ClientBuilder {
     }
 
     /// Builds the [`Client`]. An API key is required — call
-    /// [`api_key`](Self::api_key) or set `ZAZU_API_KEY`.
+    /// [`api_key`](Self::api_key) or set `MANZA_API_KEY`.
     pub fn build(self) -> Result<Client, Error> {
         let api_key = self
             .api_key
-            .or_else(|| env_non_empty("ZAZU_API_KEY"))
+            .or_else(|| env_setting("MANZA_API_KEY", "ZAZU_API_KEY"))
             .ok_or_else(|| {
                 Error::Configuration(
-                    "missing API key: pass ClientBuilder::api_key or set ZAZU_API_KEY".to_owned(),
+                    "missing API key: pass ClientBuilder::api_key or set MANZA_API_KEY".to_owned(),
                 )
             })?;
 
         let base_url = self
             .base_url
-            .or_else(|| env_non_empty("ZAZU_BASE_URL"))
+            .or_else(|| env_setting("MANZA_BASE_URL", "ZAZU_BASE_URL"))
             .unwrap_or_else(|| DEFAULT_BASE_URL.to_owned());
         let base_url = base_url.trim_end_matches('/').to_owned();
 
         let api_version = self
             .api_version
-            .or_else(|| env_non_empty("ZAZU_API_VERSION"));
+            .or_else(|| env_setting("MANZA_API_VERSION", "ZAZU_API_VERSION"));
 
         let agent: ureq::Agent = ureq::Agent::config_builder()
             .timeout_global(Some(self.timeout.unwrap_or(DEFAULT_TIMEOUT)))
@@ -119,15 +120,11 @@ impl ClientBuilder {
     }
 }
 
-fn env_non_empty(name: &str) -> Option<String> {
-    std::env::var(name).ok().filter(|v| !v.is_empty())
-}
-
 /// A successful (2xx) API response.
 ///
 /// The body is returned as-is from the API — `snake_case` keys in an
 /// untyped [`serde_json::Value`], no struct mapping. The same shape ships
-/// across every Zazu SDK so the cassette contract is one-to-one.
+/// across every Manza SDK so the cassette contract is one-to-one.
 #[derive(Debug, Clone)]
 pub struct Response {
     /// HTTP status code.
@@ -208,10 +205,10 @@ impl Client {
     ) -> ureq::RequestBuilder<ureq::typestate::WithoutBody> {
         let req = req
             .header("Authorization", format!("Bearer {}", self.inner.api_key))
-            .header("User-Agent", format!("zazu-rust/{VERSION}"))
+            .header("User-Agent", format!("manza-rust/{VERSION}"))
             .header("Accept", "application/json");
         match &self.inner.api_version {
-            Some(version) => req.header("Zazu-Version", version),
+            Some(version) => req.header("Manza-Version", version),
             None => req,
         }
     }
@@ -223,10 +220,10 @@ impl Client {
     ) -> Result<ureq::http::Response<ureq::Body>, ureq::Error> {
         let req = req
             .header("Authorization", format!("Bearer {}", self.inner.api_key))
-            .header("User-Agent", format!("zazu-rust/{VERSION}"))
+            .header("User-Agent", format!("manza-rust/{VERSION}"))
             .header("Accept", "application/json");
         let req = match &self.inner.api_version {
-            Some(version) => req.header("Zazu-Version", version),
+            Some(version) => req.header("Manza-Version", version),
             None => req,
         };
         match body {

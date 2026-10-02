@@ -5,7 +5,7 @@ use crate::resources::Attributes;
 
 /// Saved transfer recipients. Each beneficiary embeds its bank accounts (its
 /// external accounts); the one flagged `default` is used when a transfer
-/// names only the `beneficiary_id`. Beneficiaries can be created in the Zazu
+/// names only the `beneficiary_id`. Beneficiaries can be created in the Manza
 /// dashboard or through [`create`](Beneficiaries::create), and bank accounts
 /// added with [`create_external_account`](Beneficiaries::create_external_account);
 /// the API never updates or deletes them.

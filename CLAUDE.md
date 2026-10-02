@@ -1,6 +1,6 @@
-# zazu-rust
+# manza-rust
 
-Rust SDK for the Zazu API (crate `zazu-sdk`, library `zazu_sdk`). This SDK **replays zazu-ruby's cassettes**: zazu-ruby is the reference implementation, records them against `https://ma.manza.dev`, and ships them as a release tarball. Every other SDK (zazu-ts, zazu-cli, zazu-python, zazu-go, ...) replays the same cassettes, so wire behavior is identical across the family.
+Rust SDK for the Manza API (crate `manza`, library `manza`). This SDK **replays manza-ruby's cassettes**: manza-ruby is the reference implementation, records them against `https://ma.manza.dev`, and ships them as a release tarball. Every other SDK (manza-ts, the CLI, manza-python, manza-go, ...) replays the same cassettes, so wire behavior is identical across the family.
 
 ## Stack
 
@@ -13,17 +13,17 @@ Rust SDK for the Zazu API (crate `zazu-sdk`, library `zazu_sdk`). This SDK **rep
 | Test runner | `cargo test` | Integration tests in `tests/` |
 | Cassette replay (tests) | `tiny_http` + `serde_yaml` | `ReplayServer` in `tests/common/mod.rs`; reads `testdata/cassettes/` (git-ignored) |
 | Format / lint | `cargo fmt`, `cargo clippy --all-targets -- -D warnings` | Any clippy warning fails CI. Type-checking is the compiler |
-| Registry | crates.io `zazu-sdk` | https://crates.io/crates/zazu-sdk |
-| Release | `bin/release` | zazu SDK release kit; OIDC trusted publishing via `rust-lang/crates-io-auth-action`, environment `crates-io` |
+| Registry | crates.io `manza` | https://crates.io/crates/manza |
+| Release | `bin/release` | manza SDK release kit; OIDC trusted publishing via `rust-lang/crates-io-auth-action`, environment `crates-io` |
 
 ## Public API surface
 
 ```rust
 use serde_json::json;
-use zazu_sdk::{ErrorKind, Error};
-use zazu_sdk::transfer_authorization::{payee_for, sign, signature_input};
+use manza::{ErrorKind, Error};
+use manza::transfer_authorization::{payee_for, sign, signature_input};
 
-let client = zazu_sdk::Client::builder().api_key("sk_live_...").build()?;
+let client = manza::Client::builder().api_key("sk_live_...").build()?;
 
 client.entity().get()?;
 let page = client.accounts().list(Default::default())?;      // Page { data, has_more, next_cursor, .. }
@@ -64,20 +64,20 @@ authorizer.transfer_drafts().decline(draft_id, authorization_id, Some("reason"))
 
 ## Critical rules
 
-- **Never call a live Zazu/Manza API** from tests, scripts or Claude sessions. Tests replay zazu-ruby's cassettes only. Live staging calls create real transfers and approval requests for the team. Only zazu-ruby records cassettes.
+- **Never call a live Manza API** from tests, scripts or Claude sessions. Tests replay manza-ruby's cassettes only. Live staging calls create real transfers and approval requests for the team. Only manza-ruby records cassettes.
 - **Cassette contract.**
-  - Cassettes come from the newest zazu-ruby `v*` release (`cassettes-vX.Y.Z.tar.gz`) via `scripts/fetch-cassettes.sh`, extracted to `testdata/cassettes/`.
+  - Cassettes come from the manza-ruby release pinned in `scripts/fetch-cassettes.sh` (`cassettes-vX.Y.Z.tar.gz`, currently `v1.0.0`), extracted by that script, extracted to `testdata/cassettes/`.
   - They are recorded against `https://ma.manza.dev`. The harness ignores the recorded host and serves from a local `tiny_http` server.
   - Load **one cassette per test**: `transfer_drafts/authorize` vs `authorize_same_key`, and `transfer_drafts/create` vs `create_duplicate`, share method + URI, so loading both makes the first match win.
   - The three authorize cassettes match the request body minus `signature` (`ReplayServer::start_ignoring_signature`), because the recorded HMAC cannot be reproduced.
   - Every other body is matched semantically: method, path, sorted query, and JSON equality (parsed `serde_json::Value`, key order ignored; non-JSON bodies compare byte for byte). `ReplayServer::start`.
   - The harness serves the recorded status and body with a `Content-Type` header only; recorded response headers (cassette responses carry no `Content-Length`) are not replayed.
-  - The `FIXTURE_IDS` table in `tests/common/mod.rs` must stay identical to zazu-ruby's `spec/support/fixture_ids.rb`. Tests call `fixture_id("ZAZU_FIXTURE_X")`, which panics on an unknown name: add it to both repos together.
-- **Hosts.** Default `https://ma.manza.finance`; South Africa `https://za.manza.finance`; staging and cassettes `https://ma.manza.dev`. Env var names stay `ZAZU_*` (`ZAZU_API_KEY`, `ZAZU_BASE_URL`, `ZAZU_API_VERSION`) and the namespace stays `Zazu` (`zazu-sdk`, `zazu_sdk`) until the rename plan (zazu-ruby `docs/plans/2026-10-manza-rename.md`).
-- **Error model is shared across the SDK family.** Adding an error class or kind means coordinating zazu-ruby and zazu-ts at minimum. The 10th is the conflict (409), shipped in 0.3.0 as `ErrorKind::Conflict`.
-- **Signer.** `transfer_authorization` must keep reproducing the two fixed vectors from zazu-ruby's `spec/zazu/transfer_authorization_spec.rb` (asserted in `tests/transfer_authorization.rs`). Never sign the server's `signature_input` blindly: build it from your own record of the transfer; the webhook's copy is only for comparison.
-- **Release.** `bin/release` is byte-identical across the SDK repos and never edited in place. Repo-specific logic lives in `scripts/version` and `scripts/release-check`. `release.yml` gates on tag == `Cargo.toml` version, then publishes to crates.io. No long-lived `CARGO_REGISTRY_TOKEN`: publishing uses crates.io trusted publishing through the `crates-io` GitHub environment, and the binding (crate `zazu-sdk` settings on crates.io) must name `getmanza/zazu-rust`, workflow `release.yml`, environment `crates-io`.
-- **The repo moved from `getzazu` to `getmanza`.** Remotes and URLs must say `getmanza`.
+  - The `FIXTURE_IDS` table in `tests/common/mod.rs` must stay identical to manza-ruby's `spec/support/fixture_ids.rb`. Tests call `fixture_id("MANZA_FIXTURE_X")`, which panics on an unknown name: add it to both repos together.
+- **Hosts.** Default `https://ma.manza.finance`; South Africa `https://za.manza.finance`; staging and cassettes `https://ma.manza.dev`. Env vars are `MANZA_API_KEY`, `MANZA_BASE_URL`, `MANZA_API_VERSION`; the deprecated `ZAZU_*` names are read as a fallback (one `manza:` warning on stderr per variable) for all of 1.x. `src/env.rs` owns the lookup.
+- **Error model is shared across the SDK family.** Adding an error class or kind means coordinating manza-ruby and manza-ts at minimum. The 10th is the conflict (409), shipped in 0.3.0 as `ErrorKind::Conflict`.
+- **Signer.** `transfer_authorization` must keep reproducing the two fixed vectors from manza-ruby's `spec/manza/transfer_authorization_spec.rb` (asserted in `tests/transfer_authorization.rs`). Never sign the server's `signature_input` blindly: build it from your own record of the transfer; the webhook's copy is only for comparison.
+- **Release.** `bin/release` is byte-identical across the SDK repos and never edited in place. Repo-specific logic lives in `scripts/version` and `scripts/release-check`. `release.yml` gates on tag == `Cargo.toml` version, then publishes to crates.io. No long-lived `CARGO_REGISTRY_TOKEN`: publishing uses crates.io trusted publishing through the `crates-io` GitHub environment, and the binding (crate `manza` settings on crates.io) must name `getmanza/manza-rust`, workflow `release.yml`, environment `crates-io`.
+- **Renamed from zazu.** The crate was `zazu-sdk` (lib `zazu_sdk`) before 1.0.0; the repo was `zazu-rust`. Remotes and URLs must say `getmanza/manza-rust`.
 - **`cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test` before every commit.** CI runs the same.
 - **Never escape backticks in PR bodies.** With `<<'EOF'` (single-quoted heredoc) the shell passes everything through verbatim. Typing `` \` `` produces literal `` \` `` in the rendered PR. See "PR descriptions" below.
 
@@ -152,7 +152,7 @@ For multi-step tasks, state a brief plan with verification at each step.
 
 ```bash
 # One-time setup (the exact steps CI runs)
-scripts/fetch-cassettes.sh            # newest zazu-ruby release; or scripts/fetch-cassettes.sh v0.3.0
+scripts/fetch-cassettes.sh            # the pinned manza-ruby release; or scripts/fetch-cassettes.sh v1.0.1
 
 # Daily loop
 cargo test --test resources transfer_drafts_authorize   # while iterating
@@ -167,7 +167,7 @@ cargo test
 bin/release list        # last releases + what patch/minor/major would give
 bin/release --dry-run   # version + changes since the last tag, publishes nothing
 bin/release minor       # or patch (default), major, an explicit 0.3.0; --force re-creates
-# -> scripts/version bumps Cargo.toml, the zazu-sdk entry in Cargo.lock and VERSION in src/client.rs
+# -> scripts/version bumps Cargo.toml, the manza entry in Cargo.lock and VERSION in src/client.rs
 # -> scripts/release-check runs fetch-cassettes, fmt, clippy and tests, then main is pushed and the GitHub Release is created
 # -> the tag fires release.yml: test gate, tag == version check, crates.io publish (OIDC)
 ```
@@ -190,17 +190,17 @@ These live in `.claude/commands/` and are available in any Claude Code session:
 
 ## Cross-SDK contract
 
-`zazu-ruby` is the reference implementation:
+`manza-ruby` is the reference implementation:
 
 - Records cassettes against `https://ma.manza.dev`
 - Ships them as a release tarball (`cassettes-vX.Y.Z.tar.gz`) on each version
-- All other SDKs (`zazu-ts`, future `zazu-python`, `zazu-go`, `zazu-php`, `zazu-crystal`, `zazu-elixir`, and this one) replay these cassettes in their own test harness
+- All other SDKs (`manza-ts`, future `manza-python`, `manza-go`, `manza-php`, `manza-crystal`, `manza-elixir`, and this one) replay these cassettes in their own test harness
 
-If the contract breaks (e.g., new request shape, new error kind), it's a coordinated change across at least two repos: zazu-ruby and zazu-ts.
+If the contract breaks (e.g., new request shape, new error kind), it's a coordinated change across at least two repos: manza-ruby and manza-ts.
 
 ## Repository links
 
-- Ruby SDK (reference): https://github.com/getmanza/zazu-ruby
-- This repo: https://github.com/getmanza/zazu-rust
-- crates.io: https://crates.io/crates/zazu-sdk
-- TypeScript SDK: https://github.com/getmanza/zazu-ts
+- Ruby SDK (reference): https://github.com/getmanza/manza-ruby
+- This repo: https://github.com/getmanza/manza-rust
+- crates.io: https://crates.io/crates/manza
+- TypeScript SDK: https://github.com/getmanza/manza-ts

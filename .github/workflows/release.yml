@@ -1,11 +1,11 @@
 name: Release
 
-# Tag-driven release. Mirrors zazu-ruby: test gate, tag/version check,
+# Tag-driven release. Mirrors manza-ruby: test gate, tag/version check,
 # then crates.io Trusted Publishing (OIDC via rust-lang/crates-io-auth-action
 # — no long-lived token), then a GitHub release.
 #
 # One-time setup on crates.io (after the first publish): crate settings →
-# Trusted Publishing → add GitHub repository getzazu/zazu-rust, workflow
+# Trusted Publishing → add GitHub repository getmanza/manza-rust, workflow
 # release.yml, environment crates-io.
 
 on:

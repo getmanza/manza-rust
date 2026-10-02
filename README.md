@@ -1,18 +1,18 @@
-# zazu-rust
+# manza-rust
 
-Rust SDK for the [Zazu](https://zazu.ma) API.
+Rust SDK for the [Manza](https://manza.finance) API.
 
 ```toml
-# Cargo.toml — install as a git dependency for now (not on crates.io)
+# Cargo.toml
 [dependencies]
-zazu-sdk = { git = "https://github.com/getzazu/zazu-rust" }
+manza = "1"
 ```
 
 ```rust
 use serde_json::json;
 
-let client = zazu_sdk::Client::builder()
-    .api_key(std::env::var("ZAZU_API_KEY")?)
+let client = manza::Client::builder()
+    .api_key(std::env::var("MANZA_API_KEY")?)
     .build()?;
 
 let entity = client.entity().get()?;
@@ -37,7 +37,24 @@ let draft = client.transfer_drafts().create(&json!({
 The default base URL is production, `https://ma.manza.finance`. For South
 Africa use `https://za.manza.finance`; the test cassettes are recorded against
 `https://ma.manza.dev`. Override with `ClientBuilder::base_url` or
-`ZAZU_BASE_URL`.
+`MANZA_BASE_URL`.
+
+## Environment variables
+
+`MANZA_API_KEY`, `MANZA_BASE_URL` and `MANZA_API_VERSION`. The old `ZAZU_*`
+names still work throughout 1.x: the SDK prints a one-time deprecation warning
+per variable on stderr when it falls back to one. `MANZA_*` wins when both
+are set.
+
+## Migrating from `zazu-sdk`
+
+| Before (`zazu-sdk` 0.x) | After (`manza` 1.x) |
+|---|---|
+| `zazu-sdk = "0.3"` | `manza = "1"` |
+| `use zazu_sdk::...` | `use manza::...` |
+| `zazu: ...` error messages | `manza: ...` |
+| `ZAZU_API_KEY`, `ZAZU_BASE_URL`, `ZAZU_API_VERSION` | `MANZA_API_KEY`, `MANZA_BASE_URL`, `MANZA_API_VERSION` |
+| `Zazu-Version` request header, `zazu-rust/x` User-Agent | `Manza-Version`, `manza-rust/x` |
 
 ## Resources
 
@@ -54,7 +71,7 @@ from your *own* record of the transfer and answer with an API key other than
 the one that created the draft:
 
 ```rust
-use zazu_sdk::transfer_authorization::{payee_for, sign, signature_input};
+use manza::transfer_authorization::{payee_for, sign, signature_input};
 
 let payee = payee_for(Some(external_account_id), None)?;
 let input = signature_input(
@@ -73,12 +90,12 @@ failed attempt.
 
 Response bodies are returned as-is from the API — `snake_case` keys in an
 untyped `serde_json::Value`, no struct mapping. The same shape ships across
-every Zazu SDK (Ruby, TypeScript, Python, Go, Rust, ...) so the cassette
+every Manza SDK (Ruby, TypeScript, Python, Go, Rust, ...) so the cassette
 contract is one-to-one.
 
 ## Errors
 
-Non-2xx responses come back as `zazu_sdk::Error::Api` carrying `status`,
+Non-2xx responses come back as `manza::Error::Api` carrying `status`,
 `kind` (`authentication`, `forbidden`, `not_found`, `conflict`, `validation`,
 `rate_limit`, `server`, `api`), the API's `error_type`/`message`/`param`,
 the `payment_id` (on a 409 `duplicate_client_reference`), the `request_id`, and `retry_after` for 429s. Transport failures are
@@ -88,7 +105,7 @@ the `payment_id` (on a 409 `duplicate_client_reference`), the `request_id`, and 
 ## Tests
 
 Tests replay the canonical cassettes recorded by
-[zazu-ruby](https://github.com/getzazu/zazu-ruby). The cassettes are
+[manza-ruby](https://github.com/getmanza/manza-ruby). The cassettes are
 downloaded from the Ruby SDK's release tarball and served from a local
 `tiny_http` replay server. Same interactions, same assertions, every
 language.
@@ -100,11 +117,11 @@ cargo test
 
 ## The SDK family
 
-- [zazu-ruby](https://github.com/getzazu/zazu-ruby) — reference implementation (records the cassettes)
-- [zazu-ts](https://github.com/getzazu/zazu-ts)
-- [zazu-python](https://github.com/getzazu/zazu-python)
-- [zazu-go](https://github.com/getzazu/zazu-go)
-- [cli](https://github.com/getzazu/cli)
+- [manza-ruby](https://github.com/getmanza/manza-ruby) — reference implementation (records the cassettes)
+- [manza-ts](https://github.com/getmanza/manza-ts)
+- [manza-python](https://github.com/getmanza/manza-python)
+- [manza-go](https://github.com/getmanza/manza-go)
+- [cli](https://github.com/getmanza/cli)
 
 ## Releasing
 

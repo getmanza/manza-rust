@@ -60,7 +60,7 @@ cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
 
 If you can't reproduce locally, the failure is environmental (CI-only):
 - Different Rust toolchain → CI uses `dtolnay/rust-toolchain@stable`, so a new stable can add clippy lints; run `rustup update stable` locally
-- Stale cassettes → locally re-run `scripts/fetch-cassettes.sh`; CI always fetches the newest zazu-ruby `v*` release
+- Stale cassettes → locally re-run `scripts/fetch-cassettes.sh`; CI fetches the manza-ruby release pinned in the script
 - Race condition → re-running the job fixes it
 - Network → external service (GitHub release download, crates.io) hiccup
 - Secret missing → e.g. the `crates-io` environment or trusted-publishing binding not configured
@@ -94,7 +94,7 @@ The CI step that failed has a local equivalent — run it, get green:
 | `cargo test` | `cargo test` |
 | Publish to crates.io | requires OIDC — cannot run locally; verify via the release workflow |
 
-Never reproduce a failure by calling a live Zazu/Manza API. Replay failures are fixed in the SDK or by a new zazu-ruby cassette release.
+Never reproduce a failure by calling a live Manza API. Replay failures are fixed in the SDK or by a new manza-ruby cassette release.
 
 ### 3.3 Run the full pipeline
 
@@ -140,18 +140,18 @@ If the failure was CI-config drift (workflow YAML out of sync with reality), als
 ### Replay says "no cassette interaction matches"
 
 `ReplayServer` (`tests/common/mod.rs`) matches method + path + sorted query + semantic JSON body, and ignores the recorded host. The 501 message prints the method, URL and body the SDK sent. Either:
-- The SDK now sends a different shape than the cassette recorded: fix the SDK, or have zazu-ruby re-record and release.
+- The SDK now sends a different shape than the cassette recorded: fix the SDK, or have manza-ruby re-record and release.
 - Two cassettes were loaded for one test: `transfer_drafts/authorize` vs `authorize_same_key` and `create` vs `create_duplicate` share method + URI. Load one cassette per test.
-- An id placeholder drifted: the `FIXTURE_IDS` table must stay identical to zazu-ruby's `spec/support/fixture_ids.rb`.
+- An id placeholder drifted: the `FIXTURE_IDS` table must stay identical to manza-ruby's `spec/support/fixture_ids.rb`.
 - An authorize test used `ReplayServer::start` instead of `start_ignoring_signature` (the recorded HMAC cannot be reproduced).
 
 ### `read cassette ...: No such file`
 
-Run `scripts/fetch-cassettes.sh`. `testdata/cassettes/` is git-ignored and extracted from zazu-ruby's newest `v*` release (`cassettes-vX.Y.Z.tar.gz`). A new cassette name that is missing means zazu-ruby has not released it yet.
+Run `scripts/fetch-cassettes.sh`. `testdata/cassettes/` is git-ignored and extracted from the manza-ruby release pinned in the script (`cassettes-vX.Y.Z.tar.gz`). A new cassette name that is missing means manza-ruby has not released it yet.
 
 ### `cargo publish` / trusted publishing failed
 
-The trusted-publisher binding on crates.io (crate `zazu-sdk`, Settings, Trusted Publishing) must name `getmanza/zazu-rust`, workflow `release.yml`, environment `crates-io`. A stale `getzazu/zazu-rust` binding fails the OIDC exchange. Also check that the tag equals the `Cargo.toml` version (the `Verify tag matches crate version` step).
+The trusted-publisher binding on crates.io (crate `manza`, Settings, Trusted Publishing) must name `getmanza/manza-rust`, workflow `release.yml`, environment `crates-io`. A stale `getmanza/manza-rust` binding fails the OIDC exchange. Also check that the tag equals the `Cargo.toml` version (the `Verify tag matches crate version` step).
 
 ## Karpathy guidelines
 
