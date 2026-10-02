@@ -24,6 +24,7 @@ mod client;
 mod error;
 mod page;
 mod resources;
+pub mod transfer_authorization;
 
 pub use client::{Client, ClientBuilder, Response, VERSION};
 pub use error::{ApiError, Error, ErrorKind};
