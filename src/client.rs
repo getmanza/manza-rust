@@ -10,7 +10,7 @@ use crate::resources::{
 };
 
 /// The SDK version, sent in the `User-Agent` header.
-pub const VERSION: &str = "0.1.0";
+pub const VERSION: &str = "0.2.1";
 
 const DEFAULT_BASE_URL: &str = "https://zazu.ma";
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);

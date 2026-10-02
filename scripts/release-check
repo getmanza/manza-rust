@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# bin/release adapter: must pass before the version bump is committed. Mirrors CI.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+scripts/fetch-cassettes.sh   # the replay tests need the zazu-ruby cassette tarball, as in CI
+cargo fmt --check
+cargo clippy --all-targets -- -D warnings
+cargo test
