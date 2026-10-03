@@ -18,6 +18,7 @@ fn new_requires_api_key() {
 
 #[test]
 fn list_limit_validation() {
+    let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let client = Client::builder()
         .api_key("test")
         .base_url("http://127.0.0.1:1")
