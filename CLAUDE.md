@@ -66,7 +66,7 @@ authorizer.transfer_drafts().decline(draft_id, authorization_id, Some("reason"))
 
 - **Never call a live Manza API** from tests, scripts or Claude sessions. Tests replay manza-ruby's cassettes only. Live staging calls create real transfers and approval requests for the team. Only manza-ruby records cassettes.
 - **Cassette contract.**
-  - Cassettes come from the manza-ruby release pinned in `scripts/fetch-cassettes.sh` (`cassettes-vX.Y.Z.tar.gz`, currently `v1.0.0`), extracted by that script, extracted to `testdata/cassettes/`.
+  - Cassettes come from the manza-ruby release pinned in `scripts/fetch-cassettes.sh` (`cassettes-vX.Y.Z.tar.gz`, currently `v1.0.0`), extracted by that script to `testdata/cassettes/`.
   - They are recorded against `https://ma.manza.dev`. The harness ignores the recorded host and serves from a local `tiny_http` server.
   - Load **one cassette per test**: `transfer_drafts/authorize` vs `authorize_same_key`, and `transfer_drafts/create` vs `create_duplicate`, share method + URI, so loading both makes the first match win.
   - The three authorize cassettes match the request body minus `signature` (`ReplayServer::start_ignoring_signature`), because the recorded HMAC cannot be reproduced.

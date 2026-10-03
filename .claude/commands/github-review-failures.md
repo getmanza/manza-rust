@@ -151,7 +151,7 @@ Run `scripts/fetch-cassettes.sh`. `testdata/cassettes/` is git-ignored and extra
 
 ### `cargo publish` / trusted publishing failed
 
-The trusted-publisher binding on crates.io (crate `manza`, Settings, Trusted Publishing) must name `getmanza/manza-rust`, workflow `release.yml`, environment `crates-io`. A stale `getmanza/manza-rust` binding fails the OIDC exchange. Also check that the tag equals the `Cargo.toml` version (the `Verify tag matches crate version` step).
+The trusted-publisher binding on crates.io (crate `manza`, Settings, Trusted Publishing) must name `getmanza/manza-rust`, workflow `release.yml`, environment `crates-io`. A stale `getzazu/zazu-rust` or `getmanza/zazu-rust` binding fails the OIDC exchange. Also check that the tag equals the `Cargo.toml` version (the `Verify tag matches crate version` step).
 
 ## Karpathy guidelines
 
