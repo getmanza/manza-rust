@@ -71,8 +71,10 @@ fn clear_env() {
     }
 }
 
-/// Serves one request and returns its (user-agent, manza-version) headers.
-fn capture_headers(client: impl FnOnce(String)) -> (Option<String>, Option<String>) {
+/// Serves one request and returns its (user-agent, manza-version, authorization) headers.
+fn capture_headers(
+    client: impl FnOnce(String),
+) -> (Option<String>, Option<String>, Option<String>) {
     let server = tiny_http::Server::http("127.0.0.1:0").expect("bind");
     let url = format!(
         "http://127.0.0.1:{}",
@@ -87,7 +89,11 @@ fn capture_headers(client: impl FnOnce(String)) -> (Option<String>, Option<Strin
                 .find(|h| h.field.as_str().as_str().eq_ignore_ascii_case(name))
                 .map(|h| h.value.to_string())
         };
-        let seen = (header("User-Agent"), header("Manza-Version"));
+        let seen = (
+            header("User-Agent"),
+            header("Manza-Version"),
+            header("Authorization"),
+        );
         let _ = request.respond(tiny_http::Response::from_string("{}"));
         seen
     });
@@ -131,11 +137,20 @@ fn manza_env_vars_win_over_zazu() {
     clear_env();
     std::env::set_var("MANZA_API_KEY", "new");
     std::env::set_var("ZAZU_API_KEY", "old");
-    std::env::set_var("MANZA_BASE_URL", "http://new.test");
     std::env::set_var("ZAZU_BASE_URL", "http://old.test");
+    std::env::set_var("MANZA_API_VERSION", "2026-01-01");
+    std::env::set_var("ZAZU_API_VERSION", "2025-01-01");
 
-    let debug = format!("{:?}", Client::new().expect("build client"));
-    assert!(debug.contains("http://new.test"), "got {debug}");
+    let (_, version, authorization) = capture_headers(|url| {
+        std::env::set_var("MANZA_BASE_URL", url);
+        let client = Client::new().expect("build client");
+        client
+            .entity()
+            .get()
+            .expect("request reaches MANZA_BASE_URL");
+    });
+    assert_eq!(authorization.as_deref(), Some("Bearer new"));
+    assert_eq!(version.as_deref(), Some("2026-01-01"));
     clear_env();
 }
 
@@ -144,7 +159,7 @@ fn sends_manza_version_header_and_user_agent() {
     let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     clear_env();
 
-    let (user_agent, version) = capture_headers(|url| {
+    let (user_agent, version, _) = capture_headers(|url| {
         let client = Client::builder()
             .api_key("test")
             .base_url(url)
