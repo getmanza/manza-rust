@@ -62,10 +62,18 @@ jobs:
         env:
           TAG: ${{ github.ref_name }}
         run: |
-          if curl -fsS -o /dev/null -A "manza-rust release (github.com/getmanza/manza-rust)" "https://crates.io/api/v1/crates/manza/${TAG#v}"; then
-            echo "::warning::manza ${TAG#v} is already on crates.io, skipping the publish"
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-          fi
+          status=$(curl -sS -o /dev/null -w "%{http_code}" --retry 3 -A "manza-rust release (github.com/getmanza/manza-rust)" "https://crates.io/api/v1/crates/manza/${TAG#v}")
+          case "$status" in
+            200)
+              echo "::warning::manza ${TAG#v} is already on crates.io, skipping the publish"
+              echo "exists=true" >> "$GITHUB_OUTPUT"
+              ;;
+            404) ;;
+            *)
+              echo "::error::crates.io lookup for manza ${TAG#v} returned HTTP $status"
+              exit 1
+              ;;
+          esac
       - uses: rust-lang/crates-io-auth-action@v1
         if: steps.published.outputs.exists != 'true'
         id: auth
