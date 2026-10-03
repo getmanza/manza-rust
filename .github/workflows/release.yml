@@ -28,7 +28,7 @@ jobs:
       - name: Fetch cassettes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: scripts/fetch-cassettes.sh
+        run: scripts/fetch-cassettes.sh v0.3.0 # legacy branch: pin the cassettes this crate was built against
       - run: cargo fmt --check
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test
@@ -73,5 +73,5 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           tag="${GITHUB_REF#refs/tags/}"
-          gh release create "$tag" --title "$tag" \
-            --notes "See [CHANGELOG.md](https://github.com/${GITHUB_REPOSITORY}/blob/main/CHANGELOG.md)."
+          gh release create "$tag" --title "$tag" --latest=false \
+            --notes "Final release of the deprecated \`zazu-sdk\` crate. Use \`manza\` instead (\`cargo add manza\`)."
