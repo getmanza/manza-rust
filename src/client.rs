@@ -11,7 +11,7 @@ use crate::resources::{
 };
 
 /// The SDK version, sent in the `User-Agent` header.
-pub const VERSION: &str = "0.3.0";
+pub const VERSION: &str = "1.0.0";
 
 const DEFAULT_BASE_URL: &str = "https://ma.manza.finance";
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
