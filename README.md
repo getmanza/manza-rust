@@ -11,9 +11,8 @@ manza = "1"
 ```rust
 use serde_json::json;
 
-let client = manza::Client::builder()
-    .api_key(std::env::var("MANZA_API_KEY")?)
-    .build()?;
+// Reads MANZA_API_KEY (falling back to the deprecated ZAZU_API_KEY).
+let client = manza::Client::new()?;
 
 let entity = client.entity().get()?;
 

@@ -147,7 +147,7 @@ If the failure was CI-config drift (workflow YAML out of sync with reality), als
 
 ### `read cassette ...: No such file`
 
-Run `scripts/fetch-cassettes.sh`. `testdata/cassettes/` is git-ignored and extracted from the manza-ruby release pinned in the script (`cassettes-vX.Y.Z.tar.gz`). A new cassette name that is missing means manza-ruby has not released it yet.
+Run `scripts/fetch-cassettes.sh`. `testdata/cassettes/` is git-ignored and extracted from the manza-ruby release pinned in the script (`cassettes-vX.Y.Z.tar.gz`). A new cassette name that is missing means it is not in the pinned release: check whether a newer manza-ruby release ships it and bump the pin (`TAG` default in `scripts/fetch-cassettes.sh`), otherwise manza-ruby has not released it yet.
 
 ### `cargo publish` / trusted publishing failed
 
