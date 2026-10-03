@@ -1,5 +1,8 @@
 //! Rust SDK for the Zazu API.
 //!
+//! **Deprecated:** this crate is renamed to [`manza`](https://crates.io/crates/manza)
+//! (`use manza::...`). `zazu-sdk` gets no further updates.
+//!
 //! Response bodies are returned as-is from the API — `snake_case` keys, no
 //! struct mapping. The same shape ships across every Zazu SDK (Ruby,
 //! TypeScript, Python, Go, Rust, ...) so the cassette contract is

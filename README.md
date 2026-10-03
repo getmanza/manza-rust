@@ -1,5 +1,7 @@
 # zazu-rust
 
+> **Deprecated.** This crate is now [`manza`](https://crates.io/crates/manza) (`cargo add manza`, `use manza::...`). `zazu-sdk` gets no further updates.
+
 Rust SDK for the [Zazu](https://zazu.ma) API.
 
 ```toml

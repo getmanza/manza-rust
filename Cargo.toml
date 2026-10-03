@@ -1,10 +1,10 @@
 [package]
 name = "zazu-sdk"
-version = "0.3.0"
+version = "0.3.1"
 edition = "2021"
 license = "MIT"
-description = "Rust SDK for the Zazu API"
-repository = "https://github.com/getzazu/zazu-rust"
+description = "DEPRECATED: renamed to the `manza` crate. Rust SDK for the Zazu API."
+repository = "https://github.com/getmanza/manza-rust"
 
 [lib]
 name = "zazu_sdk"

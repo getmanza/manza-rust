@@ -5,7 +5,16 @@ All notable changes to `zazu-sdk` (zazu-rust) are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.3.1]
+
+Final release under the `zazu-sdk` name.
+
+### Deprecated
+
+- The crate is renamed to `manza` (`cargo add manza`, `use manza::...`).
+  The crate description, docs and README say so. No further releases here.
+
+## [0.3.0]
 
 Syncs the SDK with the API changes since 2026-07-16.
 
