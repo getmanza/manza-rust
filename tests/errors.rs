@@ -1,6 +1,6 @@
 //! Status-to-error mapping, against a one-shot local server.
 
-use zazu_sdk::{Client, Error, ErrorKind};
+use manza::{Client, Error, ErrorKind};
 
 fn error_for(status: u16, body: &str) -> Error {
     let server = tiny_http::Server::http("127.0.0.1:0").expect("bind");
@@ -24,7 +24,7 @@ fn error_for(status: u16, body: &str) -> Error {
     err
 }
 
-fn api(err: Error) -> zazu_sdk::ApiError {
+fn api(err: Error) -> manza::ApiError {
     match err {
         Error::Api(e) => *e,
         other => panic!("expected Error::Api, got {other:?}"),

@@ -9,7 +9,7 @@
 //! [`TransferDrafts::authorize`](crate::TransferDrafts::authorize):
 //!
 //! ```
-//! use zazu_sdk::transfer_authorization::{payee_for, sign, signature_input};
+//! use manza::transfer_authorization::{payee_for, sign, signature_input};
 //!
 //! let payee = payee_for(Some("ext-account-id"), None)?;
 //! let input = signature_input(
@@ -17,7 +17,7 @@
 //! );
 //! let signature = sign("whsec_signing_secret", &input);
 //! assert_eq!(signature.len(), 64);
-//! # Ok::<(), zazu_sdk::Error>(())
+//! # Ok::<(), manza::Error>(())
 //! ```
 
 use hmac::{Hmac, Mac};

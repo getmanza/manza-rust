@@ -384,6 +384,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0ceec5bc11778974d1bcb055b18002eba7f4b3518b6a0081b3af5f21666da9ad"
 
 [[package]]
+name = "manza"
+version = "0.3.0"
+dependencies = [
+ "base64",
+ "hmac",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "sha2",
+ "tiny_http",
+ "ureq",
+]
+
+[[package]]
 name = "memchr"
 version = "2.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -877,20 +891,6 @@ dependencies = [
  "quote",
  "syn",
  "synstructure",
-]
-
-[[package]]
-name = "zazu-sdk"
-version = "0.3.0"
-dependencies = [
- "base64",
- "hmac",
- "serde",
- "serde_json",
- "serde_yaml",
- "sha2",
- "tiny_http",
- "ureq",
 ]
 
 [[package]]

@@ -57,7 +57,7 @@ impl fmt::Display for ErrorKind {
     }
 }
 
-/// The API error envelope, mirroring the other Zazu SDKs' hierarchy:
+/// The API error envelope, mirroring the other Manza SDKs' hierarchy:
 /// `{ "error": { "type": ..., "message": ..., "param": ... } }`. Match on
 /// [`ApiError::kind`] instead of subclassing.
 #[derive(Debug, Clone)]
@@ -101,13 +101,13 @@ impl fmt::Display for Error {
             Error::Api(e) => match &e.param {
                 Some(param) => write!(
                     f,
-                    "zazu: {} ({} {}, param {})",
+                    "manza: {} ({} {}, param {})",
                     e.message, e.status, e.kind, param
                 ),
-                None => write!(f, "zazu: {} ({} {})", e.message, e.status, e.kind),
+                None => write!(f, "manza: {} ({} {})", e.message, e.status, e.kind),
             },
-            Error::Configuration(message) => write!(f, "zazu: {message}"),
-            Error::Connection(message) => write!(f, "zazu: connection error: {message}"),
+            Error::Configuration(message) => write!(f, "manza: {message}"),
+            Error::Connection(message) => write!(f, "manza: connection error: {message}"),
         }
     }
 }

@@ -1,11 +1,32 @@
 # Changelog
 
-All notable changes to `zazu-sdk` (zazu-rust) are documented here.
+All notable changes to `manza` (manza-rust, formerly `zazu-sdk` / zazu-rust) are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+Renamed from `zazu-sdk` to `manza` (1.0.0).
+
+### Changed
+
+- **Breaking:** the crate is now `manza` (was `zazu-sdk`) and the library is `manza` (was `zazu_sdk`); the repository is `getmanza/manza-rust`
+- Error messages are prefixed `manza: ` (was `zazu: `)
+- The version header is `Manza-Version` (was `Zazu-Version`) and the User-Agent is `manza-rust/<version>`
+- Replay tests fetch `cassettes-v1.0.0` from `getmanza/manza-ruby`, pinned in `scripts/fetch-cassettes.sh`; fixture env vars are `MANZA_FIXTURE_*`
+
+### Deprecated
+
+- `ZAZU_API_KEY`, `ZAZU_BASE_URL` and `ZAZU_API_VERSION` are read as a fallback when the `MANZA_*` name is unset, with a one-time warning per variable on stderr. The fallback stays for all of 1.x
+
+### Migrating from `zazu-sdk` 0.x
+
+| Before | After |
+|---|---|
+| `zazu-sdk = "0.3"` | `manza = "1"` |
+| `use zazu_sdk::...` | `use manza::...` |
+| `ZAZU_API_KEY` / `ZAZU_BASE_URL` / `ZAZU_API_VERSION` | `MANZA_API_KEY` / `MANZA_BASE_URL` / `MANZA_API_VERSION` |
 
 Syncs the SDK with the API changes since 2026-07-16.
 
@@ -13,7 +34,7 @@ Syncs the SDK with the API changes since 2026-07-16.
 
 - `ErrorKind::Conflict` (409) with `ApiError::payment_id`, read from `error.payment_id` (the existing draft on a duplicate `client_reference`)
 - `transfer_drafts().authorize(id, authorization_id, signature)` (a blank signature is refused locally) and `decline(id, authorization_id, reason)`
-- `zazu_sdk::transfer_authorization`: `signature_input`, `sign` (lowercase hex HMAC-SHA256) and `payee_for`, tested against the shared vectors
+- `manza::transfer_authorization`: `signature_input`, `sign` (lowercase hex HMAC-SHA256) and `payee_for`, tested against the shared vectors
 - `beneficiaries().create`, `list_external_accounts`, `get_external_account` and `create_external_account`
 - `payee_trust_requests()` resource (`create`, `get`)
 - `client_reference` documented on `transfer_drafts().create`; new checkout session and payment link fields documented

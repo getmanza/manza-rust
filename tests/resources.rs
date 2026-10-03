@@ -1,12 +1,12 @@
-//! Mirror of zazu-ruby's spec/zazu/resources/*_spec.rb — same cassettes,
+//! Mirror of manza-ruby's spec/manza/resources/*_spec.rb — same cassettes,
 //! same assertions, per the cross-language SDK contract.
 
 mod common;
 
 use common::{fixture_id, ReplayServer};
+use manza::transfer_authorization::{payee_for, sign, signature_input};
+use manza::{Client, Error, ErrorKind};
 use serde_json::json;
-use zazu_sdk::transfer_authorization::{payee_for, sign, signature_input};
-use zazu_sdk::{Client, Error, ErrorKind};
 
 fn replay_client(server: &ReplayServer) -> Client {
     Client::builder()
@@ -45,7 +45,7 @@ fn accounts() {
         .expect("accounts list");
     assert!(!page.data.is_empty(), "expected data rows");
 
-    let account_id = fixture_id("ZAZU_FIXTURE_ACCOUNT_ID");
+    let account_id = fixture_id("MANZA_FIXTURE_ACCOUNT_ID");
     client.accounts().get(account_id).expect("accounts get");
 
     client
@@ -53,7 +53,7 @@ fn accounts() {
         .list_transactions(account_id, Default::default())
         .expect("list transactions");
 
-    let tx_id = fixture_id("ZAZU_FIXTURE_TRANSACTION_ID");
+    let tx_id = fixture_id("MANZA_FIXTURE_TRANSACTION_ID");
     client
         .accounts()
         .get_transaction(account_id, tx_id)
@@ -70,7 +70,7 @@ fn customers() {
         .list(Default::default())
         .expect("customers list");
 
-    let customer_id = fixture_id("ZAZU_FIXTURE_CUSTOMER_ID");
+    let customer_id = fixture_id("MANZA_FIXTURE_CUSTOMER_ID");
     let resp = client.customers().get(customer_id).expect("customers get");
     assert!(
         resp.body["id"].is_string(),
@@ -90,7 +90,7 @@ fn invoices() {
         .expect("invoices list");
     assert!(!page.data.is_empty(), "expected data rows");
 
-    let invoice_id = fixture_id("ZAZU_FIXTURE_INVOICE_ID");
+    let invoice_id = fixture_id("MANZA_FIXTURE_INVOICE_ID");
     client.invoices().get(invoice_id).expect("invoices get");
 }
 
@@ -112,7 +112,7 @@ fn payment_links() {
     let resp = client
         .payment_links()
         .create(&json!({
-            "account_id": fixture_id("ZAZU_FIXTURE_ACCOUNT_ID"),
+            "account_id": fixture_id("MANZA_FIXTURE_ACCOUNT_ID"),
             "amount": "100.00",
             "title": "SDK fixture",
             "description": "Created by zazu-ruby fixture spec",
@@ -123,7 +123,7 @@ fn payment_links() {
 
     client
         .payment_links()
-        .cancel(fixture_id("ZAZU_FIXTURE_CANCELLABLE_PAYMENT_LINK_ID"))
+        .cancel(fixture_id("MANZA_FIXTURE_CANCELLABLE_PAYMENT_LINK_ID"))
         .expect("payment links cancel");
 }
 
@@ -134,7 +134,7 @@ fn checkout_sessions() {
 
     let resp = client
         .checkout_sessions()
-        .get(fixture_id("ZAZU_FIXTURE_CHECKOUT_SESSION_ID"))
+        .get(fixture_id("MANZA_FIXTURE_CHECKOUT_SESSION_ID"))
         .expect("checkout sessions get");
     assert!(
         resp.body["id"].is_string(),
@@ -154,7 +154,7 @@ fn webhook_endpoints() {
         .expect("webhook endpoints list");
     client
         .webhook_endpoints()
-        .get(fixture_id("ZAZU_FIXTURE_WEBHOOK_ID"))
+        .get(fixture_id("MANZA_FIXTURE_WEBHOOK_ID"))
         .expect("webhook endpoints get");
 }
 
@@ -166,18 +166,18 @@ fn transfer_drafts_create_and_get() {
     let resp = client
         .transfer_drafts()
         .create(&json!({
-            "account_id": fixture_id("ZAZU_FIXTURE_ACCOUNT_ID"),
-            "beneficiary_id": fixture_id("ZAZU_FIXTURE_BENEFICIARY_ID"),
+            "account_id": fixture_id("MANZA_FIXTURE_ACCOUNT_ID"),
+            "beneficiary_id": fixture_id("MANZA_FIXTURE_BENEFICIARY_ID"),
             "amount": "150.00",
             "payment_reference": "SDK fixture",
-            "client_reference": fixture_id("ZAZU_FIXTURE_CLIENT_REFERENCE"),
+            "client_reference": fixture_id("MANZA_FIXTURE_CLIENT_REFERENCE"),
         }))
         .expect("transfer drafts create");
     assert_eq!(resp.status, 201, "expected 201, got {}", resp.status);
     assert_eq!(resp.body["status"].as_str(), Some("requested"));
     assert_eq!(
         resp.body["client_reference"].as_str(),
-        Some(fixture_id("ZAZU_FIXTURE_CLIENT_REFERENCE"))
+        Some(fixture_id("MANZA_FIXTURE_CLIENT_REFERENCE"))
     );
     assert!(resp.body.get("authorization").is_some());
     assert!(
@@ -188,7 +188,7 @@ fn transfer_drafts_create_and_get() {
 
     let got = client
         .transfer_drafts()
-        .get(fixture_id("ZAZU_FIXTURE_TRANSFER_DRAFT_ID"))
+        .get(fixture_id("MANZA_FIXTURE_TRANSFER_DRAFT_ID"))
         .expect("transfer drafts get");
     assert!(got.body["id"].is_string());
     assert!(got.body.get("status").is_some());
@@ -203,10 +203,10 @@ fn transfer_drafts_create_duplicate() {
     let err = client
         .transfer_drafts()
         .create(&json!({
-            "account_id": fixture_id("ZAZU_FIXTURE_ACCOUNT_ID"),
-            "beneficiary_id": fixture_id("ZAZU_FIXTURE_BENEFICIARY_ID"),
+            "account_id": fixture_id("MANZA_FIXTURE_ACCOUNT_ID"),
+            "beneficiary_id": fixture_id("MANZA_FIXTURE_BENEFICIARY_ID"),
             "amount": "10.00",
-            "client_reference": fixture_id("ZAZU_FIXTURE_AUTHORIZABLE_CLIENT_REFERENCE"),
+            "client_reference": fixture_id("MANZA_FIXTURE_AUTHORIZABLE_CLIENT_REFERENCE"),
         }))
         .expect_err("expected a conflict");
     let Error::Api(e) = err else {
@@ -216,7 +216,7 @@ fn transfer_drafts_create_duplicate() {
     assert_eq!(e.error_type.as_deref(), Some("duplicate_client_reference"));
     assert_eq!(
         e.payment_id.as_deref(),
-        Some(fixture_id("ZAZU_FIXTURE_AUTHORIZABLE_DRAFT_ID"))
+        Some(fixture_id("MANZA_FIXTURE_AUTHORIZABLE_DRAFT_ID"))
     );
 }
 
@@ -253,8 +253,8 @@ fn transfer_drafts_authorize_bad_signature() {
     let err = client
         .transfer_drafts()
         .authorize(
-            fixture_id("ZAZU_FIXTURE_BAD_SIGNATURE_DRAFT_ID"),
-            fixture_id("ZAZU_FIXTURE_BAD_SIGNATURE_AUTHORIZATION_ID"),
+            fixture_id("MANZA_FIXTURE_BAD_SIGNATURE_DRAFT_ID"),
+            fixture_id("MANZA_FIXTURE_BAD_SIGNATURE_AUTHORIZATION_ID"),
             &"0".repeat(64),
         )
         .expect_err("expected invalid_signature");
@@ -273,8 +273,8 @@ fn transfer_drafts_authorize_same_key() {
     let err = client
         .transfer_drafts()
         .authorize(
-            fixture_id("ZAZU_FIXTURE_AUTHORIZABLE_DRAFT_ID"),
-            fixture_id("ZAZU_FIXTURE_AUTHORIZABLE_AUTHORIZATION_ID"),
+            fixture_id("MANZA_FIXTURE_AUTHORIZABLE_DRAFT_ID"),
+            fixture_id("MANZA_FIXTURE_AUTHORIZABLE_AUTHORIZATION_ID"),
             &"0".repeat(64),
         )
         .expect_err("expected same_key_forbidden");
@@ -290,27 +290,27 @@ fn transfer_drafts_authorize() {
     let server = ReplayServer::start_ignoring_signature(&["transfer_drafts/authorize"]);
     let client = replay_client(&server);
 
-    let draft_id = fixture_id("ZAZU_FIXTURE_AUTHORIZABLE_DRAFT_ID");
+    let draft_id = fixture_id("MANZA_FIXTURE_AUTHORIZABLE_DRAFT_ID");
     let payee = payee_for(
-        Some(fixture_id("ZAZU_FIXTURE_TRUSTED_EXTERNAL_ACCOUNT_ID")),
+        Some(fixture_id("MANZA_FIXTURE_TRUSTED_EXTERNAL_ACCOUNT_ID")),
         None,
     )
     .unwrap();
     let input = signature_input(
         draft_id,
-        fixture_id("ZAZU_FIXTURE_AUTHORIZABLE_NONCE"),
+        fixture_id("MANZA_FIXTURE_AUTHORIZABLE_NONCE"),
         "10.0",
         "MAD",
-        fixture_id("ZAZU_FIXTURE_ACCOUNT_ID"),
+        fixture_id("MANZA_FIXTURE_ACCOUNT_ID"),
         &payee,
-        Some(fixture_id("ZAZU_FIXTURE_AUTHORIZABLE_CLIENT_REFERENCE")),
+        Some(fixture_id("MANZA_FIXTURE_AUTHORIZABLE_CLIENT_REFERENCE")),
     );
 
     let resp = client
         .transfer_drafts()
         .authorize(
             draft_id,
-            fixture_id("ZAZU_FIXTURE_AUTHORIZABLE_AUTHORIZATION_ID"),
+            fixture_id("MANZA_FIXTURE_AUTHORIZABLE_AUTHORIZATION_ID"),
             &sign("replay-signing-secret", &input),
         )
         .expect("transfer drafts authorize");
@@ -330,15 +330,15 @@ fn transfer_drafts_decline() {
     let resp = client
         .transfer_drafts()
         .decline(
-            fixture_id("ZAZU_FIXTURE_DECLINABLE_DRAFT_ID"),
-            fixture_id("ZAZU_FIXTURE_DECLINABLE_AUTHORIZATION_ID"),
+            fixture_id("MANZA_FIXTURE_DECLINABLE_DRAFT_ID"),
+            fixture_id("MANZA_FIXTURE_DECLINABLE_AUTHORIZATION_ID"),
             Some("SDK fixture"),
         )
         .expect("transfer drafts decline");
     assert_eq!(resp.status, 200);
     assert_eq!(
         resp.body["id"].as_str(),
-        Some(fixture_id("ZAZU_FIXTURE_DECLINABLE_AUTHORIZATION_ID"))
+        Some(fixture_id("MANZA_FIXTURE_DECLINABLE_AUTHORIZATION_ID"))
     );
     assert_eq!(resp.body["status"].as_str(), Some("declined"));
     assert!(resp.body["declined_at"].is_string());
@@ -354,8 +354,8 @@ fn transfer_drafts_decline_omits_absent_reason() {
     let err = client
         .transfer_drafts()
         .decline(
-            fixture_id("ZAZU_FIXTURE_DECLINABLE_DRAFT_ID"),
-            fixture_id("ZAZU_FIXTURE_DECLINABLE_AUTHORIZATION_ID"),
+            fixture_id("MANZA_FIXTURE_DECLINABLE_DRAFT_ID"),
+            fixture_id("MANZA_FIXTURE_DECLINABLE_AUTHORIZATION_ID"),
             None,
         )
         .expect_err("body differs from the recorded one");
@@ -387,7 +387,7 @@ fn beneficiaries() {
 
     let resp = client
         .beneficiaries()
-        .get(fixture_id("ZAZU_FIXTURE_BENEFICIARY_ID"))
+        .get(fixture_id("MANZA_FIXTURE_BENEFICIARY_ID"))
         .expect("beneficiaries get");
     assert!(resp.body["id"].is_string());
     assert!(resp.body["external_accounts"].is_array());
@@ -418,8 +418,8 @@ fn beneficiaries_external_accounts() {
         "beneficiaries/get_external_account",
     ]);
     let client = replay_client(&server);
-    let beneficiary_id = fixture_id("ZAZU_FIXTURE_CREATED_BENEFICIARY_ID");
-    let account_id = fixture_id("ZAZU_FIXTURE_EXTERNAL_ACCOUNT_ID");
+    let beneficiary_id = fixture_id("MANZA_FIXTURE_CREATED_BENEFICIARY_ID");
+    let account_id = fixture_id("MANZA_FIXTURE_EXTERNAL_ACCOUNT_ID");
 
     let page = client
         .beneficiaries()
@@ -445,9 +445,9 @@ fn beneficiaries_create_external_account() {
     let resp = client
         .beneficiaries()
         .create_external_account(
-            fixture_id("ZAZU_FIXTURE_CREATED_BENEFICIARY_ID"),
+            fixture_id("MANZA_FIXTURE_CREATED_BENEFICIARY_ID"),
             &json!({
-                "account_number": fixture_id("ZAZU_FIXTURE_NEW_ACCOUNT_NUMBER"),
+                "account_number": fixture_id("MANZA_FIXTURE_NEW_ACCOUNT_NUMBER"),
                 "name": "Fixture Secondary Account",
             }),
         )
@@ -467,13 +467,13 @@ fn payee_trust_requests() {
 
     let resp = client
         .payee_trust_requests()
-        .create(&[fixture_id("ZAZU_FIXTURE_EXTERNAL_ACCOUNT_ID")])
+        .create(&[fixture_id("MANZA_FIXTURE_EXTERNAL_ACCOUNT_ID")])
         .expect("payee trust requests create");
     assert_eq!(resp.status, 201);
     assert_eq!(resp.body["status"].as_str(), Some("pending"));
     assert_eq!(
         resp.body["external_account_ids"],
-        json!([fixture_id("ZAZU_FIXTURE_EXTERNAL_ACCOUNT_ID")])
+        json!([fixture_id("MANZA_FIXTURE_EXTERNAL_ACCOUNT_ID")])
     );
 }
 
@@ -482,7 +482,7 @@ fn payee_trust_requests_get() {
     let server = ReplayServer::start(&["payee_trust_requests/get"]);
     let client = replay_client(&server);
 
-    let id = fixture_id("ZAZU_FIXTURE_PAYEE_TRUST_REQUEST_ID");
+    let id = fixture_id("MANZA_FIXTURE_PAYEE_TRUST_REQUEST_ID");
     let resp = client
         .payee_trust_requests()
         .get(id)

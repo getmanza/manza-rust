@@ -1,13 +1,13 @@
 [package]
-name = "zazu-sdk"
+name = "manza"
 version = "0.3.0"
 edition = "2021"
 license = "MIT"
-description = "Rust SDK for the Zazu API"
-repository = "https://github.com/getzazu/zazu-rust"
+description = "Rust SDK for the Manza API"
+repository = "https://github.com/getmanza/manza-rust"
 
 [lib]
-name = "zazu_sdk"
+name = "manza"
 
 [dependencies]
 hmac = "0.12"
