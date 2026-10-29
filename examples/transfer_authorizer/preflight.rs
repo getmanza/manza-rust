@@ -500,7 +500,9 @@ fn parse_decimal(input: &str) -> Option<i128> {
 
 /// Two decimals, rounded half away from zero.
 fn format_amount(amount: i128) -> String {
-    let cents = (amount.abs() + SCALE / 200) / (SCALE / 100);
+    let unit = (SCALE / 100) as u128;
+    let magnitude = amount.unsigned_abs();
+    let cents = magnitude / unit + u128::from(magnitude % unit >= unit / 2);
     let sign = if amount < 0 && cents > 0 { "-" } else { "" };
     format!("{sign}{}.{:02}", cents / 100, cents % 100)
 }
@@ -515,11 +517,25 @@ pub fn parse_time(input: &str) -> Option<i64> {
             .then(|| part.parse().ok())?
     };
     let bytes = input.as_bytes();
-    if bytes.len() < 20 || bytes[4] != b'-' || bytes[7] != b'-' || bytes[10] != b'T' {
+    if bytes.len() < 20
+        || bytes[4] != b'-'
+        || bytes[7] != b'-'
+        || !matches!(bytes[10], b'T' | b't')
+        || bytes[13] != b':'
+        || bytes[16] != b':'
+    {
         return None;
     }
     let (year, month, day) = (number(0..4)?, number(5..7)?, number(8..10)?);
     let (hour, minute, second) = (number(11..13)?, number(14..16)?, number(17..19)?);
+    if !(1..=12).contains(&month)
+        || !(1..=31).contains(&day)
+        || hour > 23
+        || minute > 59
+        || second > 60
+    {
+        return None;
+    }
 
     let mut rest = &input[19..];
     if let Some(fraction) = rest.strip_prefix('.') {
@@ -530,9 +546,15 @@ pub fn parse_time(input: &str) -> Option<i64> {
     }
     let offset = match rest {
         "Z" | "z" => 0,
-        _ if rest.len() == 6 && (rest.starts_with('+') || rest.starts_with('-')) => {
+        _ if rest.len() == 6
+            && (rest.starts_with('+') || rest.starts_with('-'))
+            && rest.as_bytes()[3] == b':' =>
+        {
             let hours: i64 = rest[1..3].parse().ok()?;
             let minutes: i64 = rest[4..6].parse().ok()?;
+            if hours > 23 || minutes > 59 {
+                return None;
+            }
             let seconds = hours * 3600 + minutes * 60;
             if rest.starts_with('-') {
                 -seconds

@@ -54,6 +54,8 @@ const BUSY: &str = "authorization_busy";
 const ATTEMPTS: u64 = 3;
 /// Seconds; a challenge expires, so never park the thread for long.
 const MAX_RETRY_AFTER: u64 = 30;
+/// The largest webhook body the server reads (a challenge is well under 4 KiB).
+const MAX_BODY_BYTES: usize = 1024 * 1024;
 
 pub enum Level {
     Info,
@@ -389,6 +391,17 @@ fn inspect(value: Option<&str>) -> String {
     value.map_or_else(|| "none".to_owned(), |v| format!("{v:?}"))
 }
 
+/// The request body, or `None` when it is over [`MAX_BODY_BYTES`]. A read
+/// error yields what was read, which then fails verification.
+fn read_body(reader: impl std::io::Read) -> Option<Vec<u8>> {
+    use std::io::Read;
+    let mut body = Vec::new();
+    let _ = reader
+        .take(MAX_BODY_BYTES as u64 + 1)
+        .read_to_end(&mut body);
+    (body.len() <= MAX_BODY_BYTES).then_some(body)
+}
+
 fn main() {
     dotenv::load();
     let missing: Vec<&str> = ["MANZA_AUTHORIZER_API_KEY", "MANZA_AUTHORIZER_SECRET"]
@@ -441,9 +454,14 @@ fn main() {
     println!("listening on http://127.0.0.1:{port} (point your tunnel here)");
 
     for mut request in server.incoming_requests() {
-        // An unreadable body fails verification: 401.
-        let mut body = Vec::new();
-        let _ = request.as_reader().read_to_end(&mut body);
+        // Read before verifying, so cap it: an oversized body gets 413 and
+        // calls nothing. An unreadable one fails verification: 401.
+        let Some(body) = read_body(request.as_reader()) else {
+            let _ = request.respond(
+                tiny_http::Response::from_string("payload too large").with_status_code(413),
+            );
+            continue;
+        };
         let headers: Vec<(String, String)> = request
             .headers()
             .iter()

@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use serde_json::{json, Value};
 
 use super::test_api::{reply, route, Reply, Route, StubApi};
-use super::{parse_time, Preflight};
+use super::{format_amount, parse_time, Preflight, SCALE};
 
 const ACCOUNT_ID: &str = "01958e51-7c5a-7000-8000-000000000013";
 const BENEFICIARY_ID: &str = "01958e51-7c5a-7000-8000-000000000015";
@@ -429,4 +429,25 @@ fn parses_api_times() {
     assert_eq!(parse_time("2026-01-01T00:00:00.123Z"), Some(1_767_225_600));
     assert_eq!(parse_time("2026-01-01T02:00:00+02:00"), Some(1_767_225_600));
     assert_eq!(parse_time("yesterday"), None);
+}
+
+#[test]
+fn rejects_malformed_api_times() {
+    assert_eq!(parse_time("2026-01-01T00x00x00Z"), None);
+    assert_eq!(parse_time("2026-13-01T00:00:00Z"), None);
+    assert_eq!(parse_time("2026-01-32T00:00:00Z"), None);
+    assert_eq!(parse_time("2026-01-01T24:00:00Z"), None);
+    assert_eq!(parse_time("2026-01-01T00:60:00Z"), None);
+    assert_eq!(parse_time("2026-01-01T00:00:61Z"), None);
+    assert_eq!(parse_time("2026-01-01T00:00:00+02x00"), None);
+    assert_eq!(parse_time("2026-01-01T00:00:00+24:00"), None);
+}
+
+#[test]
+fn formats_amounts_without_overflowing() {
+    assert_eq!(format_amount(1_005 * SCALE / 1_000), "1.01");
+    assert_eq!(format_amount(-1_005 * SCALE / 1_000), "-1.01");
+    assert_eq!(format_amount(SCALE / 1_000), "0.00");
+    assert_eq!(format_amount(i128::MAX), "170141183460469231731.69");
+    assert!(format_amount(i128::MIN).starts_with('-'));
 }

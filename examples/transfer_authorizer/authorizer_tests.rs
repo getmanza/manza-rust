@@ -474,3 +474,15 @@ fn answers_200_and_calls_nothing_on_another_event() {
     assert!(h.api.requests().is_empty());
     assert_includes(&h.log(), &["ignoring test.ping"]);
 }
+
+#[test]
+fn reads_a_body_up_to_the_cap() {
+    let body = vec![b'x'; super::MAX_BODY_BYTES];
+    assert_eq!(super::read_body(body.as_slice()), Some(body));
+}
+
+#[test]
+fn refuses_a_body_over_the_cap() {
+    let body = vec![b'x'; super::MAX_BODY_BYTES + 1];
+    assert_eq!(super::read_body(body.as_slice()), None);
+}

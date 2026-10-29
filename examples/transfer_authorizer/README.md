@@ -6,7 +6,7 @@ Two processes and a shared ledger, matching the two-key model of [transfer autho
 |---|---|---|---|
 | `create_transfer.rs` | `create_transfer` | Creates a transfer draft, records it in `ledger.json` from the API's response, says where the API routed it (`routing.rs`) | A (`transfers:write`) |
 | `authorizer.rs` | `transfer_authorizer` | Receives `payment.authorization_requested`, verifies it, checks the ledger, signs and authorizes (or declines) | B (`transfers:authorize`) |
-| `preflight.rs` | `preflight` | Checks every setup step and prints the fix for each that fails | A and B |
+| `preflight.rs` | `preflight` | Checks the setup the API shows and prints the fix for each that fails; what it cannot see (key B's IP allowlist; for a new payee, *Approve transfers to new payees* and key A's allowlist) you check by hand, as step 7 of the SDK README says | A and B |
 | `ledger.rs` | — | Your own record of what you created, keyed by `client_reference`. Swap it for your database | — |
 
 The examples run from a checkout of this repository; they are not part of the published crate. The authorizer's HTTP server is `tiny_http`, a dev-dependency, so the `manza` library gains no dependency.
