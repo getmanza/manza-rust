@@ -3,7 +3,7 @@
 # CI calls this before running tests so we don't have to commit cassettes
 # into both repos.
 #
-#   scripts/fetch-cassettes.sh            # the pinned release (v1.0.0)
+#   scripts/fetch-cassettes.sh            # the pinned release (v1.3.0)
 #   scripts/fetch-cassettes.sh v1.0.1     # specific tag
 #
 # Cassettes land under testdata/cassettes/.
@@ -14,7 +14,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DEST="$ROOT/testdata/cassettes"
 
 # Pinned so a new manza-ruby release cannot break every SDK CI at once.
-TAG="${1:-v1.0.0}"
+TAG="${1:-v1.3.0}"
 AUTH=()
 if [[ -n "${GH_TOKEN:-}" ]]; then
   AUTH=(-H "Authorization: Bearer $GH_TOKEN")

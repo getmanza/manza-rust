@@ -3,6 +3,14 @@
 use manza::{Client, Error, ErrorKind};
 
 fn error_for(status: u16, body: &str) -> Error {
+    error_from(status, body, |client| client.entity().get())
+}
+
+fn error_from(
+    status: u16,
+    body: &str,
+    call: impl FnOnce(&Client) -> Result<manza::Response, Error>,
+) -> Error {
     let server = tiny_http::Server::http("127.0.0.1:0").expect("bind");
     let url = format!(
         "http://127.0.0.1:{}",
@@ -19,7 +27,7 @@ fn error_for(status: u16, body: &str) -> Error {
         .base_url(url)
         .build()
         .expect("build client");
-    let err = client.entity().get().expect_err("expected an API error");
+    let err = call(&client).expect_err("expected an API error");
     handle.join().expect("server thread");
     err
 }
@@ -57,4 +65,14 @@ fn payment_id_is_absent_on_other_errors() {
     let e = api(error_for(422, r#"{"error":{"message":"nope"}}"#));
     assert_eq!(e.kind, ErrorKind::Validation);
     assert_eq!(e.payment_id, None);
+}
+
+#[test]
+fn transfer_authorizer_not_enrolled_is_not_found() {
+    let e = api(error_from(
+        404,
+        r#"{"error":{"message":"No transfer authorizer is enrolled","type":"not_found"}}"#,
+        |client| client.transfer_authorizer().get(),
+    ));
+    assert_eq!(e.kind, ErrorKind::NotFound);
 }

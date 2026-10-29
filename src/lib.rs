@@ -26,6 +26,7 @@ mod error;
 mod page;
 mod resources;
 pub mod transfer_authorization;
+pub mod webhook;
 
 pub use client::{Client, ClientBuilder, Response, VERSION};
 pub use error::{ApiError, Error, ErrorKind};
@@ -33,5 +34,10 @@ pub use page::{ListParams, Page, MAX_PER_PAGE};
 pub use resources::{
     AccountListParams, Accounts, Attributes, Beneficiaries, CheckoutSessions, CustomerListParams,
     Customers, Entity, InvoiceListParams, Invoices, PayeeTrustRequests, PaymentLinkListParams,
-    PaymentLinks, TransactionListParams, TransferDrafts, WebhookEndpoints,
+    PaymentLinks, Payments, TransactionListParams, TransferAuthorizer, WebhookEndpoints,
 };
+
+/// The former name of [`Payments`], kept for all of 1.x. It is the same
+/// type, so it calls `/api/payments` too.
+#[deprecated(since = "1.1.0", note = "use `Payments` (`Client::payments`)")]
+pub type TransferDrafts<'a> = Payments<'a>;

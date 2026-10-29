@@ -159,27 +159,32 @@ fn webhook_endpoints() {
 }
 
 #[test]
-fn transfer_drafts_create_and_get() {
-    let server = ReplayServer::start(&["transfer_drafts/create", "transfer_drafts/get"]);
+fn payments_create_and_get() {
+    let server = ReplayServer::start(&["payments/create", "payments/get"]);
     let client = replay_client(&server);
 
     let resp = client
-        .transfer_drafts()
+        .payments()
         .create(&json!({
             "account_id": fixture_id("MANZA_FIXTURE_ACCOUNT_ID"),
             "beneficiary_id": fixture_id("MANZA_FIXTURE_BENEFICIARY_ID"),
-            "amount": "150.00",
+            "amount": "10.00",
             "payment_reference": "SDK fixture",
+            "internal_notes": "[zazu-ruby-fixture] create spec - do not approve",
             "client_reference": fixture_id("MANZA_FIXTURE_CLIENT_REFERENCE"),
         }))
-        .expect("transfer drafts create");
+        .expect("payments create");
     assert_eq!(resp.status, 201, "expected 201, got {}", resp.status);
     assert_eq!(resp.body["status"].as_str(), Some("requested"));
     assert_eq!(
         resp.body["client_reference"].as_str(),
         Some(fixture_id("MANZA_FIXTURE_CLIENT_REFERENCE"))
     );
-    assert!(resp.body.get("authorization").is_some());
+    // Inside the envelope: the challenge went to the authorizer.
+    assert_eq!(
+        resp.body["authorization"]["status"].as_str(),
+        Some("pending")
+    );
     assert!(
         resp.body["transfer"].is_null(),
         "expected null transfer before approval, got {:?}",
@@ -187,21 +192,53 @@ fn transfer_drafts_create_and_get() {
     );
 
     let got = client
-        .transfer_drafts()
+        .payments()
         .get(fixture_id("MANZA_FIXTURE_TRANSFER_DRAFT_ID"))
-        .expect("transfer drafts get");
+        .expect("payments get");
     assert!(got.body["id"].is_string());
     assert!(got.body.get("status").is_some());
     assert!(got.body.get("transfer").is_some());
 }
 
 #[test]
-fn transfer_drafts_create_duplicate() {
-    let server = ReplayServer::start(&["transfer_drafts/create_duplicate"]);
+fn payments_get_refused() {
+    let server = ReplayServer::start(&["payments/get_refused"]);
+    let client = replay_client(&server);
+
+    let id = fixture_id("MANZA_FIXTURE_REFUSED_DRAFT_ID");
+    let resp = client.payments().get(id).expect("payments get");
+    assert_eq!(resp.body["id"].as_str(), Some(id));
+    assert_eq!(
+        resp.body["authorization"]["status"].as_str(),
+        Some("refused")
+    );
+    assert_eq!(
+        resp.body["authorization"]["refusal_reason"].as_str(),
+        Some("over_transfer_limit")
+    );
+}
+
+#[test]
+#[allow(deprecated)] // the deprecated alias is what this test covers
+fn transfer_drafts_is_a_deprecated_alias_of_payments() {
+    let server = ReplayServer::start(&["payments/get"]);
+    let client = replay_client(&server);
+
+    // Replays a payments/ cassette, so the alias calls /api/payments.
+    let resp = client
+        .transfer_drafts()
+        .get(fixture_id("MANZA_FIXTURE_TRANSFER_DRAFT_ID"))
+        .expect("transfer drafts get");
+    assert!(resp.body["id"].is_string());
+}
+
+#[test]
+fn payments_create_duplicate() {
+    let server = ReplayServer::start(&["payments/create_duplicate"]);
     let client = replay_client(&server);
 
     let err = client
-        .transfer_drafts()
+        .payments()
         .create(&json!({
             "account_id": fixture_id("MANZA_FIXTURE_ACCOUNT_ID"),
             "beneficiary_id": fixture_id("MANZA_FIXTURE_BENEFICIARY_ID"),
@@ -221,7 +258,7 @@ fn transfer_drafts_create_duplicate() {
 }
 
 #[test]
-fn transfer_drafts_authorize_blank_signature_fails_locally() {
+fn payments_authorize_blank_signature_fails_locally() {
     // Nothing listens on this port: a request would be a Connection error.
     let client = Client::builder()
         .api_key("test")
@@ -231,7 +268,7 @@ fn transfer_drafts_authorize_blank_signature_fails_locally() {
 
     for signature in ["", " ", "\t\n"] {
         let err = client
-            .transfer_drafts()
+            .payments()
             .authorize("draft", "auth", signature)
             .expect_err("expected an argument error");
         assert!(
@@ -245,13 +282,12 @@ fn transfer_drafts_authorize_blank_signature_fails_locally() {
 // authorizer), but replay is order-free: each test loads exactly one
 // cassette, and the authorize cassettes match the body minus `signature`.
 #[test]
-fn transfer_drafts_authorize_bad_signature() {
-    let server =
-        ReplayServer::start_ignoring_signature(&["transfer_drafts/authorize_bad_signature"]);
+fn payments_authorize_bad_signature() {
+    let server = ReplayServer::start_ignoring_signature(&["payments/authorize_bad_signature"]);
     let client = replay_client(&server);
 
     let err = client
-        .transfer_drafts()
+        .payments()
         .authorize(
             fixture_id("MANZA_FIXTURE_BAD_SIGNATURE_DRAFT_ID"),
             fixture_id("MANZA_FIXTURE_BAD_SIGNATURE_AUTHORIZATION_ID"),
@@ -266,12 +302,12 @@ fn transfer_drafts_authorize_bad_signature() {
 }
 
 #[test]
-fn transfer_drafts_authorize_same_key() {
-    let server = ReplayServer::start_ignoring_signature(&["transfer_drafts/authorize_same_key"]);
+fn payments_authorize_same_key() {
+    let server = ReplayServer::start_ignoring_signature(&["payments/authorize_same_key"]);
     let client = replay_client(&server);
 
     let err = client
-        .transfer_drafts()
+        .payments()
         .authorize(
             fixture_id("MANZA_FIXTURE_AUTHORIZABLE_DRAFT_ID"),
             fixture_id("MANZA_FIXTURE_AUTHORIZABLE_AUTHORIZATION_ID"),
@@ -286,8 +322,8 @@ fn transfer_drafts_authorize_same_key() {
 }
 
 #[test]
-fn transfer_drafts_authorize() {
-    let server = ReplayServer::start_ignoring_signature(&["transfer_drafts/authorize"]);
+fn payments_authorize() {
+    let server = ReplayServer::start_ignoring_signature(&["payments/authorize"]);
     let client = replay_client(&server);
 
     let draft_id = fixture_id("MANZA_FIXTURE_AUTHORIZABLE_DRAFT_ID");
@@ -307,13 +343,13 @@ fn transfer_drafts_authorize() {
     );
 
     let resp = client
-        .transfer_drafts()
+        .payments()
         .authorize(
             draft_id,
             fixture_id("MANZA_FIXTURE_AUTHORIZABLE_AUTHORIZATION_ID"),
             &sign("replay-signing-secret", &input),
         )
-        .expect("transfer drafts authorize");
+        .expect("payments authorize");
     assert_eq!(resp.status, 200);
     assert_eq!(resp.body["id"].as_str(), Some(draft_id));
     assert_eq!(
@@ -322,19 +358,97 @@ fn transfer_drafts_authorize() {
     );
 }
 
+// The fresh bank account was never trusted; with "Approve transfers to new
+// payees" on, the authorizer approves it and the signature trusts it.
 #[test]
-fn transfer_drafts_decline() {
-    let server = ReplayServer::start(&["transfer_drafts/decline"]);
+fn payments_authorize_new_payee() {
+    let server = ReplayServer::start_ignoring_signature(&["payments/authorize_new_payee"]);
+    let client = replay_client(&server);
+
+    let draft_id = fixture_id("MANZA_FIXTURE_NEW_PAYEE_DRAFT_ID");
+    let payee = payee_for(Some(fixture_id("MANZA_FIXTURE_EXTERNAL_ACCOUNT_ID")), None).unwrap();
+    let input = signature_input(
+        draft_id,
+        fixture_id("MANZA_FIXTURE_NEW_PAYEE_NONCE"),
+        "10.0",
+        "MAD",
+        fixture_id("MANZA_FIXTURE_ACCOUNT_ID"),
+        &payee,
+        Some(fixture_id("MANZA_FIXTURE_NEW_PAYEE_CLIENT_REFERENCE")),
+    );
+
+    let resp = client
+        .payments()
+        .authorize(
+            draft_id,
+            fixture_id("MANZA_FIXTURE_NEW_PAYEE_AUTHORIZATION_ID"),
+            &sign("replay-signing-secret", &input),
+        )
+        .expect("payments authorize");
+    assert_eq!(resp.status, 200);
+    assert_eq!(resp.body["id"].as_str(), Some(draft_id));
+    assert_eq!(
+        resp.body["authorization"]["status"].as_str(),
+        Some("authorized")
+    );
+}
+
+// Recorded after the new-payee authorize: its signature trusted the payee.
+#[test]
+fn beneficiaries_get_external_account_trusted() {
+    let server = ReplayServer::start(&["beneficiaries/get_external_account_trusted"]);
+    let client = replay_client(&server);
+
+    let account_id = fixture_id("MANZA_FIXTURE_EXTERNAL_ACCOUNT_ID");
+    let resp = client
+        .beneficiaries()
+        .get_external_account(
+            fixture_id("MANZA_FIXTURE_CREATED_BENEFICIARY_ID"),
+            account_id,
+        )
+        .expect("get external account");
+    assert_eq!(resp.body["id"].as_str(), Some(account_id));
+    assert_eq!(resp.body["trusted"], json!(true));
+}
+
+#[test]
+fn transfer_authorizer_get() {
+    let server = ReplayServer::start(&["transfer_authorizer/get"]);
     let client = replay_client(&server);
 
     let resp = client
-        .transfer_drafts()
+        .transfer_authorizer()
+        .get()
+        .expect("transfer authorizer get");
+    assert_eq!(resp.status, 200);
+    assert_eq!(resp.body["status"].as_str(), Some("active"));
+    assert!(resp.body["suspension_reason"].is_null());
+    assert_eq!(resp.body["currency_code"].as_str(), Some("MAD"));
+    for key in [
+        "per_transfer_limit",
+        "daily_limit",
+        "daily_authorized_total",
+        "secret_expires_at",
+        "webhook_endpoint_id",
+        "enrolled_at",
+    ] {
+        assert!(resp.body.get(key).is_some(), "missing {key}");
+    }
+}
+
+#[test]
+fn payments_decline() {
+    let server = ReplayServer::start(&["payments/decline"]);
+    let client = replay_client(&server);
+
+    let resp = client
+        .payments()
         .decline(
             fixture_id("MANZA_FIXTURE_DECLINABLE_DRAFT_ID"),
             fixture_id("MANZA_FIXTURE_DECLINABLE_AUTHORIZATION_ID"),
             Some("SDK fixture"),
         )
-        .expect("transfer drafts decline");
+        .expect("payments decline");
     assert_eq!(resp.status, 200);
     assert_eq!(
         resp.body["id"].as_str(),
@@ -345,14 +459,14 @@ fn transfer_drafts_decline() {
 }
 
 #[test]
-fn transfer_drafts_decline_omits_absent_reason() {
+fn payments_decline_omits_absent_reason() {
     // The decline cassette records a body with `reason`; a call without one
     // must not match it, proving the key is left out rather than nulled.
-    let server = ReplayServer::start(&["transfer_drafts/decline"]);
+    let server = ReplayServer::start(&["payments/decline"]);
     let client = replay_client(&server);
 
     let err = client
-        .transfer_drafts()
+        .payments()
         .decline(
             fixture_id("MANZA_FIXTURE_DECLINABLE_DRAFT_ID"),
             fixture_id("MANZA_FIXTURE_DECLINABLE_AUTHORIZATION_ID"),
@@ -402,7 +516,7 @@ fn beneficiaries_create() {
         .beneficiaries()
         .create(&json!({
             "beneficiary_type": "business",
-            "company_name": "Zazu Fixture Beneficiary - spec (zazu-ruby-fixture)",
+            "company_name": "Manza Fixture Beneficiary spec",
             "email": "fixture-beneficiary-spec@example.com",
         }))
         .expect("beneficiaries create");
