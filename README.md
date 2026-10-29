@@ -21,13 +21,14 @@ for account in &page.data {
     println!("{} {}", account["id"], account["name"]);
 }
 
-// Initiate a transfer — it lands in your workspace's in-app approval
-// queue; the API never executes a transfer itself.
-let draft = client.transfer_drafts().create(&json!({
+// Initiate a transfer: your enrolled transfer authorizer or your in-app
+// approvers authorize it; the API never executes a transfer by itself.
+let draft = client.payments().create(&json!({
     "account_id": account_id,
     "beneficiary_id": beneficiary_id,
     "amount": "150.00",
     "payment_reference": "INV-000042",
+    "client_reference": "po_1042", // unique per entity; a duplicate is ErrorKind::Conflict
 }))?;
 ```
 
@@ -58,30 +59,112 @@ are set.
 ## Resources
 
 `accounts`, `beneficiaries` (including `create` and the external-account
-methods), `checkout_sessions`, `customers`, `entity`, `invoices`,
-`payee_trust_requests`, `payment_links`, `transfer_drafts` (`create`, `get`,
-`authorize`, `decline`) and `webhook_endpoints`.
+methods; an external account's `trusted` says whether it is a trusted payee),
+`checkout_sessions`, `customers`, `entity`, `invoices`,
+`payee_trust_requests`, `payment_links`, `payments` (`create`, `get`,
+`authorize`, `decline`; a draft's `authorization` carries its `status` and
+`refusal_reason`), `transfer_authorizer` (`get`: `status`,
+`suspension_reason`, limits, `daily_authorized_total`; `ErrorKind::NotFound`
+when none is enrolled) and `webhook_endpoints`.
 
-## Machine authorization
+`transfer_drafts()` is a deprecated alias of `payments()`: same methods, and
+it calls `/api/payments` too. It stays for all of 1.x.
 
-A transfer draft inside your machine-authorization envelope is sent to your
-enrolled authorizer as a `payment.authorization_requested` webhook. Sign it
-from your *own* record of the transfer and answer with an API key other than
-the one that created the draft:
+## Machine-authorized transfers
+
+A draft inside your entity's authorization envelope (trusted payee, or a new
+one when you allow it, within limits) is sent to your enrolled authorizer
+endpoint as a `payment.authorization_requested` webhook carrying an
+`authorization.id` and a one-time `nonce`. Your system checks it against its
+own ledger, signs it and authorizes it with a **different API key** from the
+one that created it. [`examples/transfer_authorizer/`](examples/transfer_authorizer/)
+runs the whole flow. The [transfer authorization docs](https://ma.manza.finance/docs/api/transfer-authorization)
+cover every step below.
+
+### Setup, step by step
+
+1. **Feature flags.** Ask support to enable API transfers and transfer authorization (`release_api_webhook_authorization`) on your workspace.
+2. **Two API keys.** Key A creates drafts (`transfers:write`; `beneficiaries:request_trust` for step 6; `entity:read`, `accounts:read`, `webhook_endpoints:read` and `beneficiaries:read` for the preflight in step 7). Key B answers the challenges (`transfers:authorize`). The creating key is always refused with 403 `same_key_forbidden`, so keep key B and the signing secret on the system that holds your ledger. Bind key B to an IP allowlist: authorizing from a key without one is refused with 403 `unrestricted_api_key`. Bind key A to one too if you allow new payees (step 6): a draft to a new payee from a key without an allowlist goes to your approvers (`unrestricted_api_key`).
+3. **A stable public URL.** Your authorizer needs an HTTPS URL that never changes: an enrolled endpoint's URL is locked. Use a reserved ngrok domain (`ngrok http --url=your-name.ngrok.app 4599`) or a named Cloudflare tunnel. Never a free ngrok URL: it changes on every restart.
+4. **Create the webhook endpoint** at that URL:
+
+   ```rust
+   client.webhook_endpoints().create(&json!({
+       "url": "https://your-name.ngrok.app/",
+       "events": ["transfer.executed"],
+   }))?;
+   ```
+
+5. **Enrol it in the app**: Settings → Developer → Transfer approval. Pick the endpoint, the currency and both limits, confirm with your two-factor code, and copy the signing secret: it is shown once.
+6. **Allow new payees, or trust each payee.** Turn on *Approve transfers to new payees* at enrolment (or later, same page, with your two-factor code) and set the *Limit per transfer to a new payee*. Your authorizer may then approve a transfer to bank details your workspace never trusted, up to that limit, and its signature trusts them: the webhook's `payment.payee_trusted` is `false` for such a transfer. Bank details whose trust was revoked, or that were edited after trusting, still go to your approvers. Without the option, an approver marks the beneficiary's bank account as trusted from the Beneficiaries list, or you ask them to:
+
+   ```rust
+   client.payee_trust_requests().create(&[external_account_id])?;
+   ```
+
+   `trusted` on `client.beneficiaries().get_external_account(...)` says which it is. The API does not show whether the option is on.
+7. **Run the preflight, then the example** (after filling in `examples/transfer_authorizer/.env` from its `.env.example`): `cargo run --example preflight` checks what the API shows of steps 1–6 and prints a fix for each that fails. What it cannot see, check by hand: that key B is bound to an IP allowlist, and, for a payee not trusted yet, that *Approve transfers to new payees* is on and key A is bound to an IP allowlist too (it warns, it does not fail). Then `cargo run --example transfer_authorizer` in one terminal, `cargo run --example create_transfer` in another.
+8. **Troubleshooting**: a draft that goes to your approvers instead has an `authorization` with status `refused` and a `refusal_reason` (`create_transfer` prints it in words); `client.transfer_authorizer().get()` shows a suspension and its `suspension_reason`. An authorize answered 409 `authorization_busy` (a bank-detail edit, trust or trust revocation on the same payee was in flight) is safe to retry. The reasons, and an API error's `error_type`, are in the [transfer authorization docs](https://ma.manza.finance/docs/api/transfer-authorization).
+
+### Verifying the webhook
+
+Pass the **raw request body**, never re-serialized JSON. `construct_event`
+reads `X-Manza-Signature` and `X-Manza-Timestamp` (names in any case, the CGI
+`HTTP_X_MANZA_*` form, or the legacy `X-Zazu-*` names) from any iterator of
+`(name, value)` string pairs, checks the signature in constant time and the
+timestamp within 5 minutes, and returns the parsed event (a
+`serde_json::Value` object). It fails with `Error::Configuration` otherwise:
+
+```rust
+use manza::webhook::{construct_event, DEFAULT_TOLERANCE};
+
+// `headers` is an http::HeaderMap (axum, hyper, ...). Any iterator of
+// (name, value) string pairs works, a &HashMap<String, String> too.
+let pairs = headers
+    .iter()
+    .map(|(name, value)| (name.as_str(), value.to_str().unwrap_or("")));
+let event = match construct_event(&raw_body, pairs, signing_secret, Some(DEFAULT_TOLERANCE)) {
+    Ok(event) => event,
+    Err(manza::Error::Configuration(reason)) => return respond(401, &reason),
+    Err(other) => return respond(401, &other.to_string()),
+};
+```
+
+`manza::webhook::verify(payload, signature, timestamp, secret, Some(DEFAULT_TOLERANCE))`
+returns a `bool` instead. Both accept `None` as the tolerance to skip the
+timestamp check. Use it only to replay a captured delivery in a local tool or
+test, never on a live endpoint: without the check, anyone holding a captured
+delivery can replay it. `webhook::sign` signs a payload, for tests.
+
+### Signing the challenge
+
+Sign the draft from **your own record** of it with the endpoint's signing
+secret, never from the webhook's `signature_input` (it is there only to compare
+against):
 
 ```rust
 use manza::transfer_authorization::{payee_for, sign, signature_input};
 
 let payee = payee_for(Some(external_account_id), None)?;
 let input = signature_input(
-    draft_id, nonce, "2500.0", "MAD", account_id, &payee, Some("po_1"),
+    draft_id,
+    nonce,         // webhook data.authorization.nonce
+    "2500.0",      // the API's decimal string, verbatim
+    "MAD",
+    account_id,
+    &payee,
+    Some("po_1"),  // client_reference, None when the draft has none
 );
 let signature = sign(signing_secret, &input);
-authorizer.transfer_drafts().authorize(draft_id, authorization_id, &signature)?;
-// or: authorizer.transfer_drafts().decline(draft_id, authorization_id, Some("reason"))?;
+
+let authorizer = manza::Client::builder().api_key(authorizer_api_key).build()?;
+authorizer.payments().authorize(draft_id, authorization_id, &signature)?;
+// or: authorizer.payments().decline(draft_id, authorization_id, Some("Not ours"))?;
 ```
 
-`amount` is the API's decimal string verbatim. `authorize` refuses a blank
+A wrong signature is `ErrorKind::Validation` (`error_type`
+`invalid_signature`). Five on one challenge send the draft to your in-app
+approvers; five in a row suspend the authorizer. `authorize` refuses a blank
 signature locally (`Error::Configuration`), because the API counts it as a
 failed attempt.
 
