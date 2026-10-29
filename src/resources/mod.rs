@@ -1,4 +1,4 @@
-//! The ten API resources. Each hangs off [`Client`](crate::Client) as an
+//! The API resources. Each hangs off [`Client`](crate::Client) as an
 //! accessor method (`client.accounts()`, `client.invoices()`, ...).
 
 mod accounts;
@@ -9,7 +9,8 @@ mod entity;
 mod invoices;
 mod payee_trust_requests;
 mod payment_links;
-mod transfer_drafts;
+mod payments;
+mod transfer_authorizer;
 mod webhook_endpoints;
 
 pub use accounts::{AccountListParams, Accounts, TransactionListParams};
@@ -20,7 +21,8 @@ pub use entity::Entity;
 pub use invoices::{InvoiceListParams, Invoices};
 pub use payee_trust_requests::PayeeTrustRequests;
 pub use payment_links::{PaymentLinkListParams, PaymentLinks};
-pub use transfer_drafts::TransferDrafts;
+pub use payments::Payments;
+pub use transfer_authorizer::TransferAuthorizer;
 pub use webhook_endpoints::WebhookEndpoints;
 
 /// A request body for create/update calls — `snake_case` keys, exactly what

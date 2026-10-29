@@ -36,7 +36,7 @@ client.beneficiaries().list_external_accounts(beneficiary_id, Default::default()
 client.beneficiaries().create_external_account(beneficiary_id, &json!({ /* ... */ }))?;
 client.payee_trust_requests().create(&[external_account_id])?;
 
-match client.transfer_drafts().create(&json!({ "client_reference": "po_1", /* ... */ })) {
+match client.payments().create(&json!({ "client_reference": "po_1", /* ... */ })) {
     Err(Error::Api(e)) if e.kind == ErrorKind::Conflict => {
         let existing = e.payment_id;                          // 409 duplicate_client_reference
     }
@@ -47,11 +47,16 @@ match client.transfer_drafts().create(&json!({ "client_reference": "po_1", /* ..
 let payee = payee_for(Some(external_account_id), None)?;
 let input = signature_input(draft_id, nonce, "2500.0", "MAD", account_id, &payee, Some("po_1"));
 let signature = sign(signing_secret, &input);
-authorizer.transfer_drafts().authorize(draft_id, authorization_id, &signature)?;
-authorizer.transfer_drafts().decline(draft_id, authorization_id, Some("reason"))?;
+authorizer.payments().authorize(draft_id, authorization_id, &signature)?;
+authorizer.payments().decline(draft_id, authorization_id, Some("reason"))?;
+
+// Webhook verification (1.1.0): raw body + any (name, value) header pairs -> parsed event or Error::Configuration
+let event = manza::webhook::construct_event(&raw_body, header_pairs, signing_secret, Some(manza::webhook::DEFAULT_TOLERANCE))?;
+client.transfer_authorizer().get()?;
 ```
 
-- Ten resources: `accounts`, `beneficiaries`, `checkout_sessions`, `customers`, `entity`, `invoices`, `payee_trust_requests`, `payment_links`, `transfer_drafts`, `webhook_endpoints`
+- Eleven resources: `accounts`, `beneficiaries`, `checkout_sessions`, `customers`, `entity`, `invoices`, `payee_trust_requests`, `payment_links`, `payments`, `transfer_authorizer`, `webhook_endpoints`. `transfer_drafts()` / `TransferDrafts` is the `#[deprecated]` alias of `payments()` / `Payments` for all of 1.x
+- `examples/transfer_authorizer/`: three `[[example]]` targets with `test = true` (`cargo test` runs their tests), excluded from the published crate; `tiny_http` stays a dev-dependency
 - `Page` (`src/page.rs`): cursor-based, `Page::next()`, hard cap of 100 per page (`MAX_PER_PAGE`); `ListParams { limit, cursor }`
 - Errors (`src/error.rs`): `Error` is `Api(Box<ApiError>)`, `Configuration(String)` or `Connection(String)`. `ApiError` carries `status`, `kind: ErrorKind`, `error_type`, `message`, `param`, `payment_id`, `request_id`, `retry_after`, `body`. Discriminate on `ErrorKind` (`Authentication` 401, `Forbidden` 403, `NotFound` 404, `Conflict` 409, `Validation` 400/422, `RateLimit` 429, `Server` 5xx, `Api` other), never on status codes or `message`. `ErrorKind` is not `#[non_exhaustive]`: adding a variant breaks downstream exhaustive matches, so it is a major-version change
 - `authorize` refuses a blank signature locally (`Error::Configuration`), because the API counts it as a failed attempt
@@ -68,10 +73,10 @@ authorizer.transfer_drafts().decline(draft_id, authorization_id, Some("reason"))
 
 - **Never call a live Manza API** from tests, scripts or Claude sessions. Tests replay manza-ruby's cassettes only. Live staging calls create real transfers and approval requests for the team. Only manza-ruby records cassettes.
 - **Cassette contract.**
-  - Cassettes come from the manza-ruby release pinned in `scripts/fetch-cassettes.sh` (`cassettes-vX.Y.Z.tar.gz`, currently `v1.0.0`), extracted by that script to `testdata/cassettes/`.
+  - Cassettes come from the manza-ruby release pinned in `scripts/fetch-cassettes.sh` (`cassettes-vX.Y.Z.tar.gz`, currently `v1.3.0`), extracted by that script to `testdata/cassettes/`.
   - They are recorded against `https://ma.manza.dev`. The harness ignores the recorded host and serves from a local `tiny_http` server.
-  - Load **one cassette per test**: `transfer_drafts/authorize` vs `authorize_same_key`, and `transfer_drafts/create` vs `create_duplicate`, share method + URI, so loading both makes the first match win.
-  - The three authorize cassettes match the request body minus `signature` (`ReplayServer::start_ignoring_signature`), because the recorded HMAC cannot be reproduced.
+  - Load **one cassette per test**: `payments/authorize` vs `authorize_same_key`, `payments/create` vs `create_duplicate`, and `beneficiaries/get_external_account` vs `get_external_account_trusted`, share method + URI, so loading both makes the first match win.
+  - The four authorize cassettes match the request body minus `signature` (`ReplayServer::start_ignoring_signature`), because the recorded HMAC cannot be reproduced.
   - Every other body is matched semantically: method, path, sorted query, and JSON equality (parsed `serde_json::Value`, key order ignored; non-JSON bodies compare byte for byte). `ReplayServer::start`.
   - The harness serves the recorded status and body with a `Content-Type` header only; recorded response headers (cassette responses carry no `Content-Length`) are not replayed.
   - A replay mismatch (`ReplayServer` answers 501 "no cassette interaction matches", printing the method, URL and body sent) is fixed in the SDK, or manza-ruby re-records and releases; never mock HTTP per test. A cassette missing from the pinned release means bump the pin (`TAG` default in `scripts/fetch-cassettes.sh`) once manza-ruby has released it.
@@ -79,6 +84,7 @@ authorizer.transfer_drafts().decline(draft_id, authorization_id, Some("reason"))
   - Public API: a break (a new `ErrorKind` variant, a changed signature) is made only on purpose, named in the changelog and released as a major version.
 - **Hosts.** Default `https://ma.manza.finance`; South Africa `https://za.manza.finance`; staging and cassettes `https://ma.manza.dev`. Env vars are `MANZA_API_KEY`, `MANZA_BASE_URL`, `MANZA_API_VERSION`; the deprecated `ZAZU_*` names are read as a fallback (one `manza:` warning on stderr per variable) for all of 1.x. `src/env.rs` owns the lookup.
 - **Error model is shared across the SDK family.** Adding an error class or kind means coordinating manza-ruby and manza-ts at minimum. The 10th is the conflict (409), shipped in 0.3.0 as `ErrorKind::Conflict`.
+- **Webhook verifier.** `webhook` must keep accepting the fixed vector from manza-ruby's `spec/manza/webhook_spec.rb` (asserted in `tests/webhook.rs`); its failures are `Error::Configuration`, no new error kind.
 - **Signer.** `transfer_authorization` must keep reproducing the two fixed vectors from manza-ruby's `spec/manza/transfer_authorization_spec.rb` (asserted in `tests/transfer_authorization.rs`). Never sign the server's `signature_input` blindly: build it from your own record of the transfer; the webhook's copy is only for comparison.
 - **Release.** `bin/release` is byte-identical across the SDK repos and never edited in place. Repo-specific logic lives in `scripts/version` and `scripts/release-check`. `release.yml` gates on tag == `Cargo.toml` version, then publishes to crates.io. No long-lived `CARGO_REGISTRY_TOKEN`: publishing uses crates.io trusted publishing through the `crates-io` GitHub environment, and the binding (crate `manza` settings on crates.io) must name `getmanza/manza-rust`, workflow `release.yml`, environment `crates-io` (a stale `getzazu/zazu-rust` or `getmanza/zazu-rust` binding fails the OIDC exchange).
 - **Renamed from zazu.** The crate was `zazu-sdk` (lib `zazu_sdk`) before 1.0.0; the repo was `zazu-rust`. Remotes and URLs must say `getmanza/manza-rust`.
@@ -159,7 +165,7 @@ For multi-step tasks, state a brief plan with verification at each step.
 scripts/fetch-cassettes.sh            # the pinned manza-ruby release; or scripts/fetch-cassettes.sh v1.0.1
 
 # Daily loop
-cargo test --test resources transfer_drafts_authorize   # while iterating
+cargo test --test resources payments_authorize          # while iterating
 cargo fmt                                               # auto-format
 
 # Before commit (CI: fmt, clippy, test)

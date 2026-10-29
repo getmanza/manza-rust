@@ -6,7 +6,7 @@
 //! record of the transfer (not the webhook's `signature_input`, which is
 //! there only to compare against), sign it with the authorizer endpoint's
 //! signing secret, and pass the result to
-//! [`TransferDrafts::authorize`](crate::TransferDrafts::authorize):
+//! [`Payments::authorize`](crate::Payments::authorize):
 //!
 //! ```
 //! use manza::transfer_authorization::{payee_for, sign, signature_input};

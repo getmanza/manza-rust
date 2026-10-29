@@ -7,6 +7,29 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.1.0]
+
+Syncs the SDK with manza-ruby 1.3.0 and replays `cassettes-v1.3.0`.
+
+### Added
+
+- `manza::webhook` verifies incoming webhook deliveries: `verify` (a `bool`), `construct_event` (the parsed event, or `Error::Configuration` naming what failed) and `sign`. Reads `X-Manza-Signature` / `X-Manza-Timestamp` from any `(name, value)` pairs, names in any case, the CGI `HTTP_X_MANZA_*` form and the legacy `X-Zazu-*` names; compares in constant time and checks the timestamp within 5 minutes (`DEFAULT_TOLERANCE`; `None` skips it, for local replay only). `verify_at` / `construct_event_at` take a fixed `now`. Tested against the fixed vector every SDK shares
+- `payments()` (`Payments`): `create`, `get`, `authorize` and `decline` on the API's canonical paths, `POST /api/payments`, `GET /api/payments/:id`, `POST /api/payments/:id/authorize` and `POST /api/payments/:id/decline`. The API renamed transfer drafts to payments; request and response bodies are unchanged, and so is the `transfer_authorization` signature input
+- `transfer_authorizer().get()` (`GET /api/transfer_authorizer`): the enrolled authorizer's `status`, `suspension_reason`, limits, `daily_authorized_total`, `secret_expires_at` and `webhook_endpoint_id`; `ErrorKind::NotFound` when none is enrolled
+- Documented the pass-through fields: a draft's `authorization` carries `refusal_reason` (status `refused` when it went to the approvers at create time), bank accounts carry `trusted`, and the challenge webhook's `payment.payee_trusted` says whether the payee was trusted already
+- `examples/transfer_authorizer/`: three cargo examples, `transfer_authorizer` (a `tiny_http` server that verifies the webhook, checks a JSON ledger by `client_reference`, signs and authorizes or declines; `ALLOW_NEW_PAYEES=false` declines new payees; retries 5xx, 429 and 409 `authorization_busy`), `create_transfer` (creates a draft, records it, prints where it was routed and why) and `preflight` (checks every setup step and prints the fix). Their tests run under `cargo test`. Not shipped in the crate: `examples/` is excluded from the package and `tiny_http` stays a dev-dependency
+- README: "Setup, step by step" for machine-authorized transfers, verifying the webhook, signing the challenge
+
+### Changed
+
+- Replay tests fetch `cassettes-v1.3.0` (pinned in `scripts/fetch-cassettes.sh`). The payment tests replay `payments/*` (was `transfer_drafts/*`); `payments/create` sends `amount` `"10.00"` and an `internal_notes`, and `beneficiaries/create` the `company_name` `"Manza Fixture Beneficiary spec"`, as recorded. New fixture ids: `MANZA_FIXTURE_REFUSED_DRAFT_ID` and the four `MANZA_FIXTURE_NEW_PAYEE_*`
+
+### Deprecated
+
+- `transfer_drafts()` and `TransferDrafts`. Both keep working for all of 1.x: the accessor returns `payments()` and the type is an alias of `Payments`, so the old name now calls `/api/payments` too (the server keeps `/api/transfer_drafts` as a permanent alias). Both are `#[deprecated]`, so using them warns at compile time
+
+## [1.0.0]
+
 Renamed from `zazu-sdk` to `manza` (1.0.0).
 
 ### Changed
@@ -27,6 +50,8 @@ Renamed from `zazu-sdk` to `manza` (1.0.0).
 | `zazu-sdk = "0.3"` | `manza = "1"` |
 | `use zazu_sdk::...` | `use manza::...` |
 | `ZAZU_API_KEY` / `ZAZU_BASE_URL` / `ZAZU_API_VERSION` | `MANZA_API_KEY` / `MANZA_BASE_URL` / `MANZA_API_VERSION` |
+
+## [0.3.0]
 
 Syncs the SDK with the API changes since 2026-07-16.
 

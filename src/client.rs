@@ -7,7 +7,7 @@ use crate::env::env_setting;
 use crate::error::{new_api_error, Error};
 use crate::resources::{
     Accounts, Beneficiaries, CheckoutSessions, Customers, Entity, Invoices, PayeeTrustRequests,
-    PaymentLinks, TransferDrafts, WebhookEndpoints,
+    PaymentLinks, Payments, TransferAuthorizer, WebhookEndpoints,
 };
 
 /// The SDK version, sent in the `User-Agent` header.
@@ -299,9 +299,22 @@ impl Client {
         PaymentLinks { client: self }
     }
 
-    /// API-initiated transfers routed into the in-app approval flow.
-    pub fn transfer_drafts(&self) -> TransferDrafts<'_> {
-        TransferDrafts { client: self }
+    /// API-initiated transfers: create, get, and the machine-authorization
+    /// `authorize` / `decline`.
+    pub fn payments(&self) -> Payments<'_> {
+        Payments { client: self }
+    }
+
+    /// The enrolled transfer authorizer's status, limits and usage.
+    pub fn transfer_authorizer(&self) -> TransferAuthorizer<'_> {
+        TransferAuthorizer { client: self }
+    }
+
+    /// The former name of [`payments`](Self::payments), kept for all of 1.x.
+    /// Returns the same resource, which calls `/api/payments`.
+    #[deprecated(since = "1.1.0", note = "use `payments()`")]
+    pub fn transfer_drafts(&self) -> Payments<'_> {
+        self.payments()
     }
 
     /// Webhook endpoint management.

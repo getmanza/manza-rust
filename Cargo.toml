@@ -5,6 +5,8 @@ edition = "2021"
 license = "MIT"
 description = "Rust SDK for the Manza API"
 repository = "https://github.com/getmanza/manza-rust"
+# The examples run from a checkout; they are not part of the published crate.
+exclude = ["examples/"]
 
 [lib]
 name = "manza"
@@ -20,3 +22,20 @@ ureq = { version = "3", features = ["json"] }
 base64 = "0.22"
 serde_yaml = "0.9"
 tiny_http = "0.12"
+
+# examples/transfer_authorizer/: run from a checkout (see its README).
+# `test = true` runs their tests under `cargo test`.
+[[example]]
+name = "transfer_authorizer"
+path = "examples/transfer_authorizer/authorizer.rs"
+test = true
+
+[[example]]
+name = "create_transfer"
+path = "examples/transfer_authorizer/create_transfer.rs"
+test = true
+
+[[example]]
+name = "preflight"
+path = "examples/transfer_authorizer/preflight.rs"
+test = true
