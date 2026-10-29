@@ -51,6 +51,8 @@ Renamed from `zazu-sdk` to `manza` (1.0.0).
 | `use zazu_sdk::...` | `use manza::...` |
 | `ZAZU_API_KEY` / `ZAZU_BASE_URL` / `ZAZU_API_VERSION` | `MANZA_API_KEY` / `MANZA_BASE_URL` / `MANZA_API_VERSION` |
 
+## [0.3.0]
+
 Syncs the SDK with the API changes since 2026-07-16.
 
 ### Added

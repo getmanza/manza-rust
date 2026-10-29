@@ -219,7 +219,7 @@ fn payments_get_refused() {
 }
 
 #[test]
-#[allow(deprecated)] // the deprecated alias is what this test covers
+#[expect(deprecated)] // the alias must keep warning: this fails if it stops
 fn transfer_drafts_is_a_deprecated_alias_of_payments() {
     let server = ReplayServer::start(&["payments/get"]);
     let client = replay_client(&server);

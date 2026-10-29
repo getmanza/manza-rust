@@ -4,7 +4,7 @@ use crate::resources::Attributes;
 use serde_json::{json, Map, Value};
 
 /// API-initiated transfers, called payments (formerly transfer drafts;
-/// `/api/payments` stays a permanent server-side alias). Creating a
+/// `/api/transfer_drafts` stays a permanent server-side alias). Creating a
 /// draft never executes a transfer by itself. A draft inside the entity's machine-authorization envelope
 /// (trusted payee, within limits) is sent to the enrolled transfer
 /// authorizer as a `payment.authorization_requested` webhook; answer it with
