@@ -1,0 +1,23 @@
+tests/webhook.rs
+  s_65c3c5c5f93719::t_a3c35f6d6c6d4e 1-116,118-129,131-149,151-222,224-240,242-250,252-301
+tests/common/mod.rs
+  s_65c3c5c5f93719::t_0b080f6cfa36db 122-138
+src/webhook.rs
+  s_65c3c5c5f93719::t_d797c25c5ba065 1-206
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "badd1aa09029057033ba17b7f3a167a1f24f5772",
+  "prompts": {},
+  "sessions": {
+    "s_65c3c5c5f93719": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bee1964f-92c4-4310-92b4-5e82d7d3d709",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mhenrixon <mikael@mhenrixon.com>"
+    }
+  }
+}
