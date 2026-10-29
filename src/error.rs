@@ -89,7 +89,10 @@ pub enum Error {
     /// A non-2xx API response.
     Api(Box<ApiError>),
     /// The client could not be built or the call was invalid before any
-    /// request was made (missing API key, out-of-range limit, bad URL).
+    /// request was made (missing API key, out-of-range limit, bad URL,
+    /// blank signature), or a webhook delivery failed verification in
+    /// [`webhook::construct_event`](crate::webhook::construct_event)
+    /// (missing header, bad signature, stale timestamp, not a JSON object).
     Configuration(String),
     /// A transport-level failure (timeout, DNS, connection refused).
     Connection(String),
