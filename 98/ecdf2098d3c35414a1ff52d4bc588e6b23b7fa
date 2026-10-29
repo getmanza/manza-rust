@@ -1,0 +1,37 @@
+examples/transfer_authorizer/routing.rs
+  s_65c3c5c5f93719::t_2cf4846c883017 1-118
+examples/transfer_authorizer/dotenv.rs
+  s_65c3c5c5f93719::t_c4bb3cdabeef77 1-35
+examples/transfer_authorizer/create_transfer.rs
+  s_65c3c5c5f93719::t_94d01c27044e8b 1-18,20-124
+examples/transfer_authorizer/preflight.rs
+  s_65c3c5c5f93719::t_d87f5bb3ee95ec 1-124,126-167,169-579
+examples/transfer_authorizer/authorizer_tests.rs
+  s_65c3c5c5f93719::t_6df115521c2dd4 1-11,13-70,72-451,453-476
+examples/transfer_authorizer/ledger.rs
+  s_65c3c5c5f93719::t_ffd7f1f24db2da 1-11,13-96
+examples/transfer_authorizer/test_api.rs
+  s_65c3c5c5f93719::t_fc2170869e535d 1-150,153-161,163-169
+examples/transfer_authorizer/authorizer.rs
+  s_65c3c5c5f93719::t_3bef40741f437b 1-172,175-176,179,181-296,298-445,447-451,453-456
+examples/transfer_authorizer/preflight_tests.rs
+  s_65c3c5c5f93719::t_70d06de8866083 1-366,368-432
+examples/transfer_authorizer/README.md
+  s_65c3c5c5f93719::t_a77e8babcd34de 1-95
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "98ecdf2098d3c35414a1ff52d4bc588e6b23b7fa",
+  "prompts": {},
+  "sessions": {
+    "s_65c3c5c5f93719": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bee1964f-92c4-4310-92b4-5e82d7d3d709",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "mhenrixon <mikael@mhenrixon.com>"
+    }
+  }
+}
