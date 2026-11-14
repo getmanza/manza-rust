@@ -1,6 +1,7 @@
 //! Drives the authorizer with a signed copy of the documented
 //! `payment.authorization_requested` payload (the same one manza-ruby's
-//! spec/examples/transfer_authorizer_spec.rb uses), against a local stub
+//! spec/examples/transfer_authorizer_spec.rb uses, with v2's
+//! `signature_input_v2` and `payment.transfer_method`), against a local stub
 //! of the API.
 
 use std::sync::{Arc, Mutex};
@@ -8,7 +9,7 @@ use std::time::Duration;
 
 use serde_json::{json, Value};
 
-use super::ledger::Ledger;
+use super::ledger::{Ledger, Record};
 use super::test_api::{reply, route, temp_dir, Reply, StubApi, TempDir};
 use super::App;
 
@@ -19,6 +20,9 @@ const NONCE: &str = "9f86d081884c7d659a2feaa0c55ad015";
 const SIGNATURE_INPUT: &str = "manza.transfer-authorization.v1|01958e51-7c5a-7000-8000-000000000012|\
                                9f86d081884c7d659a2feaa0c55ad015|2500.0|ZAR|01958e51-7c5a-7000-8000-000000000013|\
                                ext:01958e51-7c5a-7000-8000-000000000014|po_8812";
+const SIGNATURE_INPUT_V2: &str = "manza.transfer-authorization.v2|01958e51-7c5a-7000-8000-000000000012|\
+                                  9f86d081884c7d659a2feaa0c55ad015|2500.0|ZAR|01958e51-7c5a-7000-8000-000000000013|\
+                                  ext:01958e51-7c5a-7000-8000-000000000014|po_8812|eft";
 
 fn example_payload() -> Value {
     json!({
@@ -30,6 +34,9 @@ fn example_payload() -> Value {
                 "id": AUTHORIZATION_ID,
                 "nonce": NONCE,
                 "expires_at": "2026-10-01T13:00:00Z",
+                // v1 on purpose: the API keeps `signature_version` and
+                // `signature_input` v1 for signers pinned to 2026-03-27 and
+                // adds `signature_input_v2` beside them.
                 "signature_version": "manza.transfer-authorization.v1"
             },
             "payment": {
@@ -43,9 +50,11 @@ fn example_payload() -> Value {
                 "destination_account_id": null,
                 "payment_reference": "INV-2026-001",
                 "client_reference": "po_8812",
+                "transfer_method": "eft",
                 "payee_trusted": false
             },
-            "signature_input": SIGNATURE_INPUT
+            "signature_input": SIGNATURE_INPUT,
+            "signature_input_v2": SIGNATURE_INPUT_V2
         }
     })
 }
@@ -71,16 +80,7 @@ impl Harness {
         let dir = temp_dir();
         let ledger = Ledger::new(dir.0.join("ledger.json"));
         if let Some(amount) = ledger_amount {
-            ledger
-                .record(
-                    "po_8812",
-                    DRAFT_ID,
-                    amount,
-                    "ZAR",
-                    "01958e51-7c5a-7000-8000-000000000013",
-                    "ext:01958e51-7c5a-7000-8000-000000000014",
-                )
-                .expect("record");
+            record(&ledger, amount, Some("eft"));
         }
         let log = Arc::new(Mutex::new(String::new()));
         let sink = Arc::clone(&log);
@@ -132,6 +132,23 @@ impl Harness {
     }
 }
 
+/// Writes the example's ledger entry for `po_8812`.
+fn record(ledger: &Ledger, amount: &str, transfer_method: Option<&str>) {
+    ledger
+        .record(
+            "po_8812",
+            &Record {
+                payment_id: DRAFT_ID,
+                amount,
+                currency_code: "ZAR",
+                account_id: "01958e51-7c5a-7000-8000-000000000013",
+                payee: "ext:01958e51-7c5a-7000-8000-000000000014",
+                transfer_method,
+            },
+        )
+        .expect("record");
+}
+
 fn now() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -158,17 +175,23 @@ fn error(status: u16, error_type: &str) -> Reply {
     )
 }
 
+fn ledger_input() -> String {
+    manza::transfer_authorization::signature_input(
+        &manza::transfer_authorization::SignatureFields {
+            payment_id: DRAFT_ID,
+            nonce: NONCE,
+            amount: "2500.0",
+            currency_code: "ZAR",
+            account_id: "01958e51-7c5a-7000-8000-000000000013",
+            payee: "ext:01958e51-7c5a-7000-8000-000000000014",
+            client_reference: Some("po_8812"),
+            transfer_method: Some("eft"),
+        },
+    )
+}
+
 fn expected_signature() -> String {
-    let input = manza::transfer_authorization::signature_input(
-        DRAFT_ID,
-        NONCE,
-        "2500.0",
-        "ZAR",
-        "01958e51-7c5a-7000-8000-000000000013",
-        "ext:01958e51-7c5a-7000-8000-000000000014",
-        Some("po_8812"),
-    );
-    manza::transfer_authorization::sign(SECRET, &input)
+    manza::transfer_authorization::sign(SECRET, &ledger_input())
 }
 
 fn with_payment(change: impl FnOnce(&mut serde_json::Map<String, Value>)) -> String {
@@ -219,15 +242,55 @@ fn logs_the_api_error_type_and_request_id_when_authorize_fails() {
 }
 
 #[test]
-fn does_not_authorize_when_the_webhooks_signature_input_differs() {
+fn signs_the_webhooks_v2_input() {
+    assert_eq!(ledger_input(), SIGNATURE_INPUT_V2);
+}
+
+// An entry the 1.x example wrote has no `transfer_method`: it still matches a
+// payment whose rail is null, and signs an empty last segment.
+#[test]
+fn a_1x_ledger_entry_without_transfer_method_authorizes_a_payment_without_a_rail() {
+    let h = Harness::new(
+        vec![route("POST", authorize_path(), vec![processing()])],
+        None,
+    );
+    std::fs::write(
+        h._dir.0.join("ledger.json"),
+        json!({ "po_8812": {
+            "payment_id": DRAFT_ID,
+            "amount": "2500.0",
+            "currency_code": "ZAR",
+            "account_id": "01958e51-7c5a-7000-8000-000000000013",
+            "payee": "ext:01958e51-7c5a-7000-8000-000000000014"
+        } })
+        .to_string(),
+    )
+    .expect("write a 1.x ledger");
+    let no_rail = SIGNATURE_INPUT_V2.strip_suffix("eft").unwrap();
+    let mut payload = example_payload();
+    payload["data"]["payment"]["transfer_method"] = Value::Null;
+    payload["data"]["signature_input_v2"] = json!(no_rail);
+
+    assert_eq!(h.deliver(&payload.to_string()), 200);
+
+    let calls = h.api.requests_to("/authorize");
+    assert_eq!(calls.len(), 1);
+    assert_eq!(
+        calls[0].body["signature"],
+        json!(manza::transfer_authorization::sign(SECRET, no_rail))
+    );
+}
+
+#[test]
+fn does_not_authorize_when_the_webhooks_v2_input_differs() {
     let h = Harness::new(vec![], Some("2500.0"));
     let mut payload = example_payload();
-    payload["data"]["signature_input"] = json!("something-else");
+    payload["data"]["signature_input_v2"] = json!("something-else");
 
     h.deliver(&payload.to_string());
 
     assert!(h.api.requests().is_empty());
-    assert_includes(&h.log(), &["something-else", SIGNATURE_INPUT]);
+    assert_includes(&h.log(), &["something-else", SIGNATURE_INPUT_V2]);
 }
 
 #[test]
@@ -419,6 +482,33 @@ fn declines_a_ledger_mismatch_with_a_reason_naming_the_field() {
     assert_includes(calls[0].body["reason"].as_str().unwrap(), &["amount"]);
     assert!(h.api.requests_to("/authorize").is_empty());
     assert_includes(&h.log(), &["declined"]);
+}
+
+#[test]
+fn declines_a_transfer_method_that_differs_from_the_ledger() {
+    let h = Harness::new(
+        vec![route(
+            "POST",
+            decline_path(),
+            vec![reply(
+                200,
+                json!({ "id": AUTHORIZATION_ID, "status": "declined" }),
+            )],
+        )],
+        None,
+    );
+    record(&h.app.ledger, "2500.0", Some("rtc"));
+
+    assert_eq!(h.deliver(&example_payload().to_string()), 200);
+
+    let calls = h.api.requests_to("/decline");
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].body["authorization_id"], AUTHORIZATION_ID);
+    assert_includes(
+        calls[0].body["reason"].as_str().unwrap(),
+        &["transfer_method"],
+    );
+    assert!(h.api.requests_to("/authorize").is_empty());
 }
 
 #[test]

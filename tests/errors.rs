@@ -76,3 +76,56 @@ fn transfer_authorizer_not_enrolled_is_not_found() {
     ));
     assert_eq!(e.kind, ErrorKind::NotFound);
 }
+
+// The API's body verbatim (getmanza/app spec/requests/api/invoices_spec.rb).
+#[test]
+fn maps_422_plan_limit_reached_to_plan_limit_reached_with_kind_current_and_max() {
+    let e = api(error_for(
+        422,
+        r#"{"error":{"type":"plan_limit_reached","message":"Plan limit reached for invoices: 10 of 10","kind":"invoices","current":10,"max":10}}"#,
+    ));
+    assert_eq!(e.kind, ErrorKind::PlanLimitReached);
+    assert_eq!(e.kind.as_str(), "plan_limit_reached");
+    assert_eq!(e.status, 422);
+    assert_eq!(e.error_type.as_deref(), Some("plan_limit_reached"));
+    assert_eq!(e.message, "Plan limit reached for invoices: 10 of 10");
+    assert_eq!(e.limit_kind.as_deref(), Some("invoices"));
+    assert_eq!(e.limit_current, Some(10));
+    assert_eq!(e.limit_max, Some(10));
+}
+
+#[test]
+fn plan_limit_reached_without_a_message_says_so() {
+    let e = api(error_for(
+        422,
+        r#"{"error":{"type":"plan_limit_reached","kind":"invoices","current":3,"max":3}}"#,
+    ));
+    assert_eq!(e.kind, ErrorKind::PlanLimitReached);
+    assert_eq!(e.message, "Plan limit reached");
+}
+
+#[test]
+fn keeps_any_other_422_a_plain_validation_error() {
+    let e = api(error_for(
+        422,
+        r#"{"error":{"message":"Customer not found","type":"invalid_request_error","param":"customer_id"}}"#,
+    ));
+    assert_eq!(e.kind, ErrorKind::Validation);
+    assert_eq!(e.param.as_deref(), Some("customer_id"));
+    assert_eq!(e.limit_kind, None);
+    assert_eq!(e.limit_current, None);
+    assert_eq!(e.limit_max, None);
+}
+
+// Only a 422 is a plan cap: the same type on another status keeps its kind.
+#[test]
+fn plan_limit_reached_type_on_another_status_keeps_its_kind() {
+    let e = api(error_for(
+        500,
+        r#"{"error":{"type":"plan_limit_reached","message":"boom","kind":"invoices","current":1,"max":1}}"#,
+    ));
+    assert_eq!(e.kind, ErrorKind::Server);
+    assert_eq!(e.limit_kind, None);
+    assert_eq!(e.limit_current, None);
+    assert_eq!(e.limit_max, None);
+}

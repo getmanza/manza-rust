@@ -6,7 +6,7 @@
 //! ```json
 //! { "po_8812": { "payment_id": "...", "amount": "2500.0",
 //!                "currency_code": "MAD", "account_id": "...",
-//!                "payee": "ext:..." } }
+//!                "payee": "ext:...", "transfer_method": "standard" } }
 //! ```
 
 use std::fs::{self, OpenOptions};
@@ -16,8 +16,20 @@ use std::path::{Path, PathBuf};
 use serde_json::{json, Map, Value};
 
 /// One ledger entry: `payment_id`, `amount`, `currency_code`, `account_id`
-/// and `payee`, all strings.
+/// and `payee`, all strings, and `transfer_method`, a string or `null`.
 pub type Entry = Map<String, Value>;
+
+/// What [`Ledger::record`] writes, from the create response.
+pub struct Record<'a> {
+    pub payment_id: &'a str,
+    pub amount: &'a str,
+    pub currency_code: &'a str,
+    pub account_id: &'a str,
+    pub payee: &'a str,
+    /// The create response's `transfer_method` (`None` where the market
+    /// offers no choice): the v2 signature signs it.
+    pub transfer_method: Option<&'a str>,
+}
 
 pub struct Ledger {
     path: PathBuf,
@@ -28,21 +40,14 @@ impl Ledger {
         Ledger { path: path.into() }
     }
 
-    pub fn record(
-        &self,
-        client_reference: &str,
-        payment_id: &str,
-        amount: &str,
-        currency_code: &str,
-        account_id: &str,
-        payee: &str,
-    ) -> io::Result<Entry> {
+    pub fn record(&self, client_reference: &str, record: &Record<'_>) -> io::Result<Entry> {
         let entry = json!({
-            "payment_id": payment_id,
-            "amount": amount,
-            "currency_code": currency_code,
-            "account_id": account_id,
-            "payee": payee,
+            "payment_id": record.payment_id,
+            "amount": record.amount,
+            "currency_code": record.currency_code,
+            "account_id": record.account_id,
+            "payee": record.payee,
+            "transfer_method": record.transfer_method,
         });
         let Value::Object(entry) = entry else {
             unreachable!("json! of an object literal")

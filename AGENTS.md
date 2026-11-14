@@ -23,7 +23,7 @@ Rust SDK for the Manza API (crate `manza`, library `manza`). This SDK **replays 
 ```rust
 use serde_json::json;
 use manza::{ErrorKind, Error};
-use manza::transfer_authorization::{payee_for, sign, signature_input};
+use manza::transfer_authorization::{payee_for, sign, signature_input, SignatureFields};
 
 let client = manza::Client::builder().api_key("sk_live_...").build()?;
 
@@ -43,9 +43,12 @@ match client.payments().create(&json!({ "client_reference": "po_1", /* ... */ })
     other => { other?; }
 }
 
-// Machine authorization (0.3.0): sign from YOUR record of the transfer, never the webhook's signature_input
+// Machine authorization (v2 since 2.0.0): sign from YOUR record of the transfer, never the webhook's signature_input_v2
 let payee = payee_for(Some(external_account_id), None)?;
-let input = signature_input(draft_id, nonce, "2500.0", "MAD", account_id, &payee, Some("po_1"));
+let input = signature_input(&SignatureFields {
+    payment_id: draft_id, nonce, amount: "2500.0", currency_code: "MAD", account_id, payee: &payee,
+    client_reference: Some("po_1"), transfer_method: Some("standard"), // None signs "" for a null rail
+});
 let signature = sign(signing_secret, &input);
 authorizer.payments().authorize(draft_id, authorization_id, &signature)?;
 authorizer.payments().decline(draft_id, authorization_id, Some("reason"))?;
@@ -58,7 +61,7 @@ client.transfer_authorizer().get()?;
 - Eleven resources: `accounts`, `beneficiaries`, `checkout_sessions`, `customers`, `entity`, `invoices`, `payee_trust_requests`, `payment_links`, `payments`, `transfer_authorizer`, `webhook_endpoints`. `transfer_drafts()` / `TransferDrafts` is the `#[deprecated]` alias of `payments()` / `Payments` for all of 1.x
 - `examples/transfer_authorizer/`: three `[[example]]` targets with `test = true` (`cargo test` runs their tests), excluded from the published crate; `tiny_http` stays a dev-dependency
 - `Page` (`src/page.rs`): cursor-based, `Page::next()`, hard cap of 100 per page (`MAX_PER_PAGE`); `ListParams { limit, cursor }`
-- Errors (`src/error.rs`): `Error` is `Api(Box<ApiError>)`, `Configuration(String)` or `Connection(String)`. `ApiError` carries `status`, `kind: ErrorKind`, `error_type`, `message`, `param`, `payment_id`, `request_id`, `retry_after`, `body`. Discriminate on `ErrorKind` (`Authentication` 401, `Forbidden` 403, `NotFound` 404, `Conflict` 409, `Validation` 400/422, `RateLimit` 429, `Server` 5xx, `Api` other), never on status codes or `message`. `ErrorKind` is not `#[non_exhaustive]`: adding a variant breaks downstream exhaustive matches, so it is a major-version change
+- Errors (`src/error.rs`): `Error` is `Api(Box<ApiError>)`, `Configuration(String)` or `Connection(String)`. `ApiError` carries `status`, `kind: ErrorKind`, `error_type`, `message`, `param`, `payment_id`, `limit_kind`, `limit_current`, `limit_max`, `request_id`, `retry_after`, `body`. Discriminate on `ErrorKind` (`Authentication` 401, `Forbidden` 403, `NotFound` 404, `Conflict` 409, `Validation` 400/422, `PlanLimitReached` 422 with `error_type` `plan_limit_reached`, `RateLimit` 429, `Server` 5xx, `Api` other), never on status codes or `message`. `ErrorKind` is not `#[non_exhaustive]`: adding a variant breaks downstream exhaustive matches, so it is a major-version change
 - `authorize` refuses a blank signature locally (`Error::Configuration`), because the API counts it as a failed attempt
 - Snake-case wire format: request and response bodies are returned as-is. **No auto-camelCasing, no typed structs.**
 
@@ -73,7 +76,7 @@ client.transfer_authorizer().get()?;
 
 - **Never call a live Manza API** from tests, scripts or Claude sessions. Tests replay manza-ruby's cassettes only. Live staging calls create real transfers and approval requests for the team. Only manza-ruby records cassettes.
 - **Cassette contract.**
-  - Cassettes come from the manza-ruby release pinned in `scripts/fetch-cassettes.sh` (`cassettes-vX.Y.Z.tar.gz`, currently `v1.3.0`), extracted by that script to `testdata/cassettes/`.
+  - Cassettes come from the manza-ruby release pinned in `scripts/fetch-cassettes.sh` (`cassettes-vX.Y.Z.tar.gz`, currently `v2.0.0`), extracted by that script to `testdata/cassettes/`.
   - They are recorded against `https://ma.manza.dev`. The harness ignores the recorded host and serves from a local `tiny_http` server.
   - Load **one cassette per test**: `payments/authorize` vs `authorize_same_key`, `payments/create` vs `create_duplicate`, and `beneficiaries/get_external_account` vs `get_external_account_trusted`, share method + URI, so loading both makes the first match win.
   - The four authorize cassettes match the request body minus `signature` (`ReplayServer::start_ignoring_signature`), because the recorded HMAC cannot be reproduced.
@@ -83,9 +86,9 @@ client.transfer_authorizer().get()?;
   - The `FIXTURE_IDS` table in `tests/common/mod.rs` must stay identical to manza-ruby's `spec/support/fixture_ids.rb`. Tests call `fixture_id("MANZA_FIXTURE_X")`, which panics on an unknown name: add it to both repos together.
   - Public API: a break (a new `ErrorKind` variant, a changed signature) is made only on purpose, named in the changelog and released as a major version.
 - **Hosts.** Default `https://ma.manza.finance`; South Africa `https://za.manza.finance`; staging and cassettes `https://ma.manza.dev`. Env vars are `MANZA_API_KEY`, `MANZA_BASE_URL`, `MANZA_API_VERSION`; the deprecated `ZAZU_*` names are read as a fallback (one `manza:` warning on stderr per variable) for all of 1.x. `src/env.rs` owns the lookup.
-- **Error model is shared across the SDK family.** Adding an error class or kind means coordinating manza-ruby and manza-ts at minimum. The 10th is the conflict (409), shipped in 0.3.0 as `ErrorKind::Conflict`.
+- **Error model is shared across the SDK family.** Adding an error class or kind means coordinating manza-ruby and manza-ts at minimum. The 10th is the conflict (409), shipped in 0.3.0 as `ErrorKind::Conflict`; the 11th is the plan cap (422 `plan_limit_reached`), shipped in 2.0.0 as `ErrorKind::PlanLimitReached` (the other SDKs' `PlanLimitReachedError`, a validation subclass; here its own kind, so `kind == Validation` does not match it).
 - **Webhook verifier.** `webhook` must keep accepting the fixed vector from manza-ruby's `spec/manza/webhook_spec.rb` (asserted in `tests/webhook.rs`); its failures are `Error::Configuration`, no new error kind.
-- **Signer.** `transfer_authorization` must keep reproducing the two fixed vectors from manza-ruby's `spec/manza/transfer_authorization_spec.rb` (asserted in `tests/transfer_authorization.rs`). Never sign the server's `signature_input` blindly: build it from your own record of the transfer; the webhook's copy is only for comparison.
+- **Signer.** `transfer_authorization` signs `manza.transfer-authorization.v2` only (`transfer_method` last, `""` when null) and must keep reproducing the three fixed vectors from manza-ruby's `spec/manza/transfer_authorization_spec.rb` (asserted in `tests/transfer_authorization.rs`). `SignatureFields` has no `Default`, so every field, `transfer_method` included, is named at the call site. Never sign the server's `signature_input_v2` blindly: build it from your own record of the transfer; the webhook's copy is only for comparison. Clients pinned to `Manza-Version: 2026-03-27` (verified v1) stay on 1.x.
 - **Release.** `bin/release` is byte-identical across the SDK repos and never edited in place. Repo-specific logic lives in `scripts/version` and `scripts/release-check`. `release.yml` gates on tag == `Cargo.toml` version, then publishes to crates.io. No long-lived `CARGO_REGISTRY_TOKEN`: publishing uses crates.io trusted publishing through the `crates-io` GitHub environment, and the binding (crate `manza` settings on crates.io) must name `getmanza/manza-rust`, workflow `release.yml`, environment `crates-io` (a stale `getzazu/zazu-rust` or `getmanza/zazu-rust` binding fails the OIDC exchange).
 - **Renamed from zazu.** The crate was `zazu-sdk` (lib `zazu_sdk`) before 1.0.0; the repo was `zazu-rust`. Remotes and URLs must say `getmanza/manza-rust`.
 - **`cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test` before every commit.** CI runs the same.

@@ -31,7 +31,7 @@ use std::fmt;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use manza::transfer_authorization::{sign, signature_input};
+use manza::transfer_authorization::{sign, signature_input, SignatureFields};
 use manza::{Client, Error, ErrorKind, Response};
 use serde_json::Value;
 
@@ -39,13 +39,16 @@ use ledger::{Entry, Ledger};
 
 const EVENT: &str = "payment.authorization_requested";
 
-/// Ledger field and webhook `data.payment` field. All must match.
-const CHECKED_FIELDS: [(&str, &str); 5] = [
+/// Ledger field and webhook `data.payment` field. All must match; a
+/// `transfer_method` the ledger lacks (an entry written by the 1.x example)
+/// reads as `null`, so it matches only a payment without a rail.
+const CHECKED_FIELDS: [(&str, &str); 6] = [
     ("payment_id", "id"),
     ("amount", "amount"),
     ("currency_code", "currency_code"),
     ("account_id", "account_id"),
     ("payee", "payee"),
+    ("transfer_method", "transfer_method"),
 ];
 
 /// A 409 worth another try: a bank-detail edit, trust or revocation on the
@@ -209,7 +212,7 @@ impl App {
             &entry,
             authorization,
             client_reference,
-            &data["signature_input"],
+            &data["signature_input_v2"],
         )
     }
 
@@ -230,8 +233,9 @@ impl App {
         }
     }
 
-    /// Signs from the ledger, never from the webhook: `signature_input` in
-    /// the webhook is only there to compare against.
+    /// Signs from the ledger, never from the webhook: `signature_input_v2` in
+    /// the webhook is only there to compare against. (Its `signature_input`
+    /// is the v1 string, for clients pinned to `Manza-Version: 2026-03-27`.)
     fn authorize(
         &self,
         entry: &Entry,
@@ -241,15 +245,16 @@ impl App {
     ) -> Result<(), Failure> {
         let field = |name: &str| entry.get(name).and_then(Value::as_str).unwrap_or_default();
         let payment_id = field("payment_id");
-        let input = signature_input(
+        let input = signature_input(&SignatureFields {
             payment_id,
-            text(&authorization["nonce"]),
-            field("amount"),
-            field("currency_code"),
-            field("account_id"),
-            field("payee"),
+            nonce: text(&authorization["nonce"]),
+            amount: field("amount"),
+            currency_code: field("currency_code"),
+            account_id: field("account_id"),
+            payee: field("payee"),
             client_reference,
-        );
+            transfer_method: entry.get("transfer_method").and_then(Value::as_str),
+        });
         // A signature over a different input is sure to fail, and failed
         // attempts count toward suspending the authorizer. Leave the
         // challenge unanswered instead: it expires and goes to your
