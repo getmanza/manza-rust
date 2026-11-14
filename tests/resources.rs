@@ -4,7 +4,7 @@
 mod common;
 
 use common::{fixture_id, ReplayServer};
-use manza::transfer_authorization::{payee_for, sign, signature_input};
+use manza::transfer_authorization::{payee_for, sign, signature_input, SignatureFields};
 use manza::{Client, Error, ErrorKind};
 use serde_json::json;
 
@@ -94,6 +94,129 @@ fn invoices() {
     client.invoices().get(invoice_id).expect("invoices get");
 }
 
+// Fixed dates keep the recorded body stable (manza-ruby re-records them when
+// staging refuses a date). Each create loads only its own cassette: all three
+// are POST /api/invoices.
+#[test]
+fn invoices_create() {
+    let server = ReplayServer::start(&["invoices/create"]);
+    let client = replay_client(&server);
+
+    let resp = client
+        .invoices()
+        .create(&json!({
+            "customer_id": fixture_id("MANZA_FIXTURE_CUSTOMER_ID"),
+            "account_id": fixture_id("MANZA_FIXTURE_ACCOUNT_ID"),
+            "currency_code": "MAD",
+            "issue_date": "2026-11-14",
+            "due_date": "2026-12-14",
+            "generate_payment_link": true,
+            "items": [
+                { "description": "SDK fixture line", "quantity": 1, "unit_price": "100.00" }
+            ],
+        }))
+        .expect("invoices create");
+    assert_eq!(resp.status, 201);
+    assert_eq!(resp.body["generate_payment_link"], json!(true));
+    assert_eq!(
+        resp.body["account"]["id"].as_str(),
+        Some(fixture_id("MANZA_FIXTURE_ACCOUNT_ID"))
+    );
+}
+
+// An invoice is paid into one of the entity's accounts: a create without one
+// is refused as not approvable (`state_error`, no `param`). An account_id that
+// is not the entity's is refused with `param` "account_id".
+#[test]
+fn invoices_create_without_account() {
+    let server = ReplayServer::start(&["invoices/create_without_account"]);
+    let client = replay_client(&server);
+
+    let err = client
+        .invoices()
+        .create(&json!({
+            "customer_id": fixture_id("MANZA_FIXTURE_CUSTOMER_ID"),
+            "currency_code": "MAD",
+            "issue_date": "2026-05-03",
+            "due_date": "2026-06-03",
+            "items": [
+                { "description": "SDK fixture line", "quantity": 1, "unit_price": "100.00" }
+            ],
+        }))
+        .expect_err("expected a validation error");
+    let Error::Api(e) = err else {
+        panic!("expected Error::Api, got {err:?}")
+    };
+    assert_eq!(e.kind, ErrorKind::Validation);
+    assert_eq!(e.status, 422);
+    assert_eq!(e.error_type.as_deref(), Some("state_error"));
+    // The account refusal, not a date one (also state_error).
+    assert_eq!(e.param, None);
+    let message = e.message.to_lowercase();
+    assert!(
+        message.contains("compte bancaire") || message.contains("bank account"),
+        "unexpected message {:?}",
+        e.message
+    );
+}
+
+// Only a boolean (or "true"/"false"/"1"/"0") is taken: any other text is
+// refused before anything is created.
+#[test]
+fn invoices_create_with_a_non_boolean_generate_payment_link() {
+    let server = ReplayServer::start(&["invoices/create_invalid_generate_payment_link"]);
+    let client = replay_client(&server);
+
+    let err = client
+        .invoices()
+        .create(&json!({
+            "customer_id": fixture_id("MANZA_FIXTURE_CUSTOMER_ID"),
+            "account_id": fixture_id("MANZA_FIXTURE_ACCOUNT_ID"),
+            "currency_code": "MAD",
+            "issue_date": "2026-05-03",
+            "due_date": "2026-06-03",
+            "generate_payment_link": "yes please",
+            "items": [
+                { "description": "SDK fixture line", "quantity": 1, "unit_price": "100.00" }
+            ],
+        }))
+        .expect_err("expected a validation error");
+    let Error::Api(e) = err else {
+        panic!("expected Error::Api, got {err:?}")
+    };
+    assert_eq!(e.kind, ErrorKind::Validation);
+    assert_eq!(e.status, 400);
+    assert!(
+        e.message.contains("generate_payment_link"),
+        "unexpected message {:?}",
+        e.message
+    );
+}
+
+#[test]
+fn invoices_update() {
+    let server = ReplayServer::start(&["invoices/update"]);
+    let client = replay_client(&server);
+
+    let resp = client
+        .invoices()
+        .update(
+            fixture_id("MANZA_FIXTURE_INVOICE_ID"),
+            &json!({
+                "account_id": fixture_id("MANZA_FIXTURE_ACCOUNT_ID"),
+                "notes": "updated by SDK fixture spec",
+                "generate_payment_link": true,
+            }),
+        )
+        .expect("invoices update");
+    assert_eq!(resp.status, 200);
+    assert_eq!(resp.body["generate_payment_link"], json!(true));
+    assert_eq!(
+        resp.body["account"]["id"].as_str(),
+        Some(fixture_id("MANZA_FIXTURE_ACCOUNT_ID"))
+    );
+}
+
 #[test]
 fn payment_links() {
     let server = ReplayServer::start(&[
@@ -172,6 +295,7 @@ fn payments_create_and_get() {
             "payment_reference": "SDK fixture",
             "internal_notes": "[zazu-ruby-fixture] create spec - do not approve",
             "client_reference": fixture_id("MANZA_FIXTURE_CLIENT_REFERENCE"),
+            "transfer_method": "standard",
         }))
         .expect("payments create");
     assert_eq!(resp.status, 201, "expected 201, got {}", resp.status);
@@ -180,6 +304,7 @@ fn payments_create_and_get() {
         resp.body["client_reference"].as_str(),
         Some(fixture_id("MANZA_FIXTURE_CLIENT_REFERENCE"))
     );
+    assert_eq!(resp.body["transfer_method"].as_str(), Some("standard"));
     // Inside the envelope: the challenge went to the authorizer.
     assert_eq!(
         resp.body["authorization"]["status"].as_str(),
@@ -198,6 +323,28 @@ fn payments_create_and_get() {
     assert!(got.body["id"].is_string());
     assert!(got.body.get("status").is_some());
     assert!(got.body.get("transfer").is_some());
+}
+
+#[test]
+fn payments_create_with_a_transfer_method_the_market_does_not_offer() {
+    let server = ReplayServer::start(&["payments/create_invalid_transfer_method"]);
+    let client = replay_client(&server);
+
+    let err = client
+        .payments()
+        .create(&json!({
+            "account_id": fixture_id("MANZA_FIXTURE_ACCOUNT_ID"),
+            "beneficiary_id": fixture_id("MANZA_FIXTURE_BENEFICIARY_ID"),
+            "amount": "10.00",
+            "transfer_method": "carrier_pigeon",
+        }))
+        .expect_err("expected a validation error");
+    let Error::Api(e) = err else {
+        panic!("expected Error::Api, got {err:?}")
+    };
+    assert_eq!(e.kind, ErrorKind::Validation);
+    assert_eq!(e.status, 422);
+    assert_eq!(e.param.as_deref(), Some("transfer_method"));
 }
 
 #[test]
@@ -281,6 +428,8 @@ fn payments_authorize_blank_signature_fails_locally() {
 // Order matters while recording (five consecutive bad signatures suspend the
 // authorizer), but replay is order-free: each test loads exactly one
 // cassette, and the authorize cassettes match the body minus `signature`.
+// The seeded drafts send `transfer_method: "standard"` (MA's base rail, always
+// offered), so the v2 input signs that rail.
 #[test]
 fn payments_authorize_bad_signature() {
     let server = ReplayServer::start_ignoring_signature(&["payments/authorize_bad_signature"]);
@@ -332,15 +481,16 @@ fn payments_authorize() {
         None,
     )
     .unwrap();
-    let input = signature_input(
-        draft_id,
-        fixture_id("MANZA_FIXTURE_AUTHORIZABLE_NONCE"),
-        "10.0",
-        "MAD",
-        fixture_id("MANZA_FIXTURE_ACCOUNT_ID"),
-        &payee,
-        Some(fixture_id("MANZA_FIXTURE_AUTHORIZABLE_CLIENT_REFERENCE")),
-    );
+    let input = signature_input(&SignatureFields {
+        payment_id: draft_id,
+        nonce: fixture_id("MANZA_FIXTURE_AUTHORIZABLE_NONCE"),
+        amount: "10.0",
+        currency_code: "MAD",
+        account_id: fixture_id("MANZA_FIXTURE_ACCOUNT_ID"),
+        payee: &payee,
+        client_reference: Some(fixture_id("MANZA_FIXTURE_AUTHORIZABLE_CLIENT_REFERENCE")),
+        transfer_method: Some("standard"),
+    });
 
     let resp = client
         .payments()
@@ -367,15 +517,16 @@ fn payments_authorize_new_payee() {
 
     let draft_id = fixture_id("MANZA_FIXTURE_NEW_PAYEE_DRAFT_ID");
     let payee = payee_for(Some(fixture_id("MANZA_FIXTURE_EXTERNAL_ACCOUNT_ID")), None).unwrap();
-    let input = signature_input(
-        draft_id,
-        fixture_id("MANZA_FIXTURE_NEW_PAYEE_NONCE"),
-        "10.0",
-        "MAD",
-        fixture_id("MANZA_FIXTURE_ACCOUNT_ID"),
-        &payee,
-        Some(fixture_id("MANZA_FIXTURE_NEW_PAYEE_CLIENT_REFERENCE")),
-    );
+    let input = signature_input(&SignatureFields {
+        payment_id: draft_id,
+        nonce: fixture_id("MANZA_FIXTURE_NEW_PAYEE_NONCE"),
+        amount: "10.0",
+        currency_code: "MAD",
+        account_id: fixture_id("MANZA_FIXTURE_ACCOUNT_ID"),
+        payee: &payee,
+        client_reference: Some(fixture_id("MANZA_FIXTURE_NEW_PAYEE_CLIENT_REFERENCE")),
+        transfer_method: Some("standard"),
+    });
 
     let resp = client
         .payments()
@@ -434,6 +585,13 @@ fn transfer_authorizer_get() {
     ] {
         assert!(resp.body.get(key).is_some(), "missing {key}");
     }
+    // "Approve transfers to new payees" is on for the fixture entity (setup step 6).
+    assert_eq!(resp.body["trust_new_payees"], json!(true));
+    assert!(
+        resp.body["new_payee_limit"].is_string(),
+        "expected a decimal string, got {:?}",
+        resp.body["new_payee_limit"]
+    );
 }
 
 #[test]

@@ -1,6 +1,7 @@
 use std::fmt;
 
-/// Classification of an [`ApiError`], derived from the HTTP status code.
+/// Classification of an [`ApiError`], derived from the HTTP status code (and,
+/// for [`ErrorKind::PlanLimitReached`], the error's `type`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ErrorKind {
     /// 401
@@ -11,8 +12,15 @@ pub enum ErrorKind {
     NotFound,
     /// 409
     Conflict,
-    /// 400, 422
+    /// 400, and 422 other than `plan_limit_reached`
     Validation,
+    /// 422 whose `error_type` is `plan_limit_reached`: the entity's plan caps
+    /// this kind of record and the cap is reached (the other SDKs'
+    /// `PlanLimitReachedError`, a validation subclass). Retrying does not
+    /// help until the plan changes or the period rolls over.
+    /// [`ApiError::limit_kind`], [`ApiError::limit_current`] and
+    /// [`ApiError::limit_max`] carry the cap.
+    PlanLimitReached,
     /// 429
     RateLimit,
     /// 5xx
@@ -23,7 +31,8 @@ pub enum ErrorKind {
 
 impl ErrorKind {
     /// The kind as its wire-format string (`authentication`, `forbidden`,
-    /// `not_found`, `conflict`, `validation`, `rate_limit`, `server`, `api`).
+    /// `not_found`, `conflict`, `validation`, `plan_limit_reached`,
+    /// `rate_limit`, `server`, `api`).
     pub fn as_str(&self) -> &'static str {
         match self {
             ErrorKind::Authentication => "authentication",
@@ -31,6 +40,7 @@ impl ErrorKind {
             ErrorKind::NotFound => "not_found",
             ErrorKind::Conflict => "conflict",
             ErrorKind::Validation => "validation",
+            ErrorKind::PlanLimitReached => "plan_limit_reached",
             ErrorKind::RateLimit => "rate_limit",
             ErrorKind::Server => "server",
             ErrorKind::Api => "api",
@@ -64,7 +74,7 @@ impl fmt::Display for ErrorKind {
 pub struct ApiError {
     /// HTTP status code.
     pub status: u16,
-    /// Classification derived from the status code.
+    /// Classification derived from the status code (and the `type`).
     pub kind: ErrorKind,
     /// The API's `error.type` field.
     pub error_type: Option<String>,
@@ -75,6 +85,15 @@ pub struct ApiError {
     /// The API's `error.payment_id` field: the existing transfer draft on a
     /// `duplicate_client_reference` conflict (409).
     pub payment_id: Option<String>,
+    /// The API's `error.kind` field: what the plan caps (e.g. `invoices`).
+    /// Only set for [`ErrorKind::PlanLimitReached`].
+    pub limit_kind: Option<String>,
+    /// The API's `error.current` field: the count the entity holds. Only set
+    /// for [`ErrorKind::PlanLimitReached`].
+    pub limit_current: Option<u64>,
+    /// The API's `error.max` field: the plan's cap. Only set for
+    /// [`ErrorKind::PlanLimitReached`].
+    pub limit_max: Option<u64>,
     /// The `X-Request-Id` response header.
     pub request_id: Option<String>,
     /// Seconds from the `Retry-After` header; only set for `rate_limit`.
@@ -123,7 +142,6 @@ pub(crate) fn new_api_error(
     retry_after: Option<u64>,
     body: serde_json::Value,
 ) -> Error {
-    let kind = ErrorKind::from_status(status);
     let payload = body.get("error");
     let field = |name: &str| {
         payload
@@ -131,16 +149,27 @@ pub(crate) fn new_api_error(
             .and_then(|v| v.as_str())
             .map(str::to_owned)
     };
+    let number = |name: &str| payload.and_then(|p| p.get(name)).and_then(|v| v.as_u64());
 
+    let error_type = field("type");
+    let plan_limit = status == 422 && error_type.as_deref() == Some("plan_limit_reached");
+    let kind = if plan_limit {
+        ErrorKind::PlanLimitReached
+    } else {
+        ErrorKind::from_status(status)
+    };
     let message = field("message").unwrap_or_else(|| status_text(status).to_owned());
 
     Error::Api(Box::new(ApiError {
         status,
         kind,
-        error_type: field("type"),
+        error_type,
         message,
         param: field("param"),
         payment_id: field("payment_id"),
+        limit_kind: field("kind").filter(|_| plan_limit),
+        limit_current: number("current").filter(|_| plan_limit),
+        limit_max: number("max").filter(|_| plan_limit),
         request_id,
         retry_after: if kind == ErrorKind::RateLimit {
             retry_after

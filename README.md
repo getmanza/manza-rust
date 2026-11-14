@@ -29,6 +29,19 @@ let draft = client.payments().create(&json!({
     "amount": "150.00",
     "payment_reference": "INV-000042",
     "client_reference": "po_1042", // unique per entity; a duplicate is ErrorKind::Conflict
+    "transfer_method": "standard", // optional rail: eft/rtc (ZA), standard/instant (MA); omitted → the default
+}))?;
+
+// An invoice is paid into one of your accounts (account_id is required);
+// generate_payment_link asks for a card payment link, made when it is approved.
+client.invoices().create(&json!({
+    "customer_id": customer_id,
+    "account_id": account_id,
+    "currency_code": "MAD",
+    "issue_date": "2026-11-14",
+    "due_date": "2026-12-14",
+    "generate_payment_link": true, // payment_links:write; payment links enabled for the entity
+    "items": [{ "description": "Consulting", "quantity": 10, "unit_price": "150.00" }],
 }))?;
 ```
 
@@ -45,6 +58,12 @@ Africa use `https://za.manza.finance`; the test cassettes are recorded against
 names still work throughout 1.x: the SDK prints a one-time deprecation warning
 per variable on stderr when it falls back to one. `MANZA_*` wins when both
 are set.
+
+Unpinned, the API answers with its current version; `MANZA_API_VERSION` (or
+`ClientBuilder::api_version`) pins one, e.g. `2026-11-13`. manza 2.x signs
+transfer authorizations v2, which the API verifies for unpinned requests and
+requests pinned to `2026-11-13` or later: a client pinned to `2026-03-27` must
+stay on manza 1.x.
 
 ## Migrating from `zazu-sdk`
 
@@ -64,8 +83,11 @@ methods; an external account's `trusted` says whether it is a trusted payee),
 `payee_trust_requests`, `payment_links`, `payments` (`create`, `get`,
 `authorize`, `decline`; a draft's `authorization` carries its `status` and
 `refusal_reason`), `transfer_authorizer` (`get`: `status`,
-`suspension_reason`, limits, `daily_authorized_total`; `ErrorKind::NotFound`
-when none is enrolled) and `webhook_endpoints`.
+`suspension_reason`, limits, `daily_authorized_total`, `trust_new_payees`,
+`new_payee_limit`; `ErrorKind::NotFound` when none is enrolled) and
+`webhook_endpoints`. Invoices take `account_id` (required on create) and
+`generate_payment_link` on `create` and `update`; `create_payment_link` was
+removed in 2.0.
 
 `transfer_drafts()` is a deprecated alias of `payments()`: same methods, and
 it calls `/api/payments` too. It stays for all of 1.x.
@@ -102,7 +124,7 @@ cover every step below.
    client.payee_trust_requests().create(&[external_account_id])?;
    ```
 
-   `trusted` on `client.beneficiaries().get_external_account(...)` says which it is. The API does not show whether the option is on.
+   `trusted` on `client.beneficiaries().get_external_account(...)` says which it is. `client.transfer_authorizer().get()` shows whether the option is on (`trust_new_payees`) and its ceiling (`new_payee_limit`).
 7. **Run the preflight, then the example** (after filling in `examples/transfer_authorizer/.env` from its `.env.example`): `cargo run --example preflight` checks what the API shows of steps 1–6 and prints a fix for each that fails. What it cannot see, check by hand: that key B is bound to an IP allowlist, and, for a payee not trusted yet, that *Approve transfers to new payees* is on and key A is bound to an IP allowlist too (it warns, it does not fail). Then `cargo run --example transfer_authorizer` in one terminal, `cargo run --example create_transfer` in another.
 8. **Troubleshooting**: a draft that goes to your approvers instead has an `authorization` with status `refused` and a `refusal_reason` (`create_transfer` prints it in words); `client.transfer_authorizer().get()` shows a suspension and its `suspension_reason`. An authorize answered 409 `authorization_busy` (a bank-detail edit, trust or trust revocation on the same payee was in flight) is safe to retry. The reasons, and an API error's `error_type`, are in the [transfer authorization docs](https://ma.manza.finance/docs/api/transfer-authorization).
 
@@ -139,22 +161,26 @@ delivery can replay it. `webhook::sign` signs a payload, for tests.
 ### Signing the challenge
 
 Sign the draft from **your own record** of it with the endpoint's signing
-secret, never from the webhook's `signature_input` (it is there only to compare
-against):
+secret, never from the webhook's `signature_input_v2` (it is there only to
+compare against). The SDK builds the v2 input (`manza.transfer-authorization.v2`),
+which ends with the payment's `transfer_method` (an empty segment when it is
+`null`). The webhook's `signature_input` is the v1 string, verified only for
+clients pinned to `Manza-Version: 2026-03-27`: those stay on manza 1.x.
 
 ```rust
-use manza::transfer_authorization::{payee_for, sign, signature_input};
+use manza::transfer_authorization::{payee_for, sign, signature_input, SignatureFields};
 
 let payee = payee_for(Some(external_account_id), None)?;
-let input = signature_input(
-    draft_id,
-    nonce,         // webhook data.authorization.nonce
-    "2500.0",      // the API's decimal string, verbatim
-    "MAD",
+let input = signature_input(&SignatureFields {
+    payment_id: draft_id,
+    nonce,                              // webhook data.authorization.nonce
+    amount: "2500.0",                   // the API's decimal string, verbatim
+    currency_code: "MAD",
     account_id,
-    &payee,
-    Some("po_1"),  // client_reference, None when the draft has none
-);
+    payee: &payee,
+    client_reference: Some("po_1"),     // None when the draft has none
+    transfer_method: Some("standard"),  // the payment's transfer_method; None when it is null
+});
 let signature = sign(signing_secret, &input);
 
 let authorizer = manza::Client::builder().api_key(authorizer_api_key).build()?;
@@ -179,8 +205,11 @@ contract is one-to-one.
 
 Non-2xx responses come back as `manza::Error::Api` carrying `status`,
 `kind` (`authentication`, `forbidden`, `not_found`, `conflict`, `validation`,
-`rate_limit`, `server`, `api`), the API's `error_type`/`message`/`param`,
-the `payment_id` (on a 409 `duplicate_client_reference`), the `request_id`, and `retry_after` for 429s. Transport failures are
+`plan_limit_reached`, `rate_limit`, `server`, `api`), the API's
+`error_type`/`message`/`param`, the `payment_id` (on a 409
+`duplicate_client_reference`), `limit_kind`/`limit_current`/`limit_max` (on a
+422 `plan_limit_reached`: what the plan caps, the count held and the cap; do
+not retry it), the `request_id`, and `retry_after` for 429s. Transport failures are
 `Error::Connection`; client-build and invalid-argument failures are
 `Error::Configuration`.
 

@@ -61,14 +61,15 @@ fn main() {
              not written to the ledger: if it reaches the authorizer, the authorizer declines it"
         ))
     });
-    if let Err(e) = ledger.record(
-        &client_reference,
-        &id,
-        &text("amount"),
-        &text("currency_code"),
-        &text("account_id"),
-        &payee,
-    ) {
+    let record = ledger::Record {
+        payment_id: &id,
+        amount: &text("amount"),
+        currency_code: &text("currency_code"),
+        account_id: &text("account_id"),
+        payee: &payee,
+        transfer_method: draft["transfer_method"].as_str(),
+    };
+    if let Err(e) = ledger.record(&client_reference, &record) {
         abort(&format!(
             "payment {id} (client_reference {client_reference}) was created but not written to the \
              ledger ({e}): if it reaches the authorizer, the authorizer declines it"

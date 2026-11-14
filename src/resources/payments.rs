@@ -26,9 +26,12 @@ use serde_json::{json, Map, Value};
 ///   `over_daily_limit`, `currency_mismatch`, `suspended` or
 ///   `secret_expired`.
 /// - `expired` / `superseded` / `failed`: a challenge was sent and closed
-///   without an authorize: `expired` (no answer within the hour), `stale`
-///   (the draft, its payee's bank details or the endpoint changed while it
-///   was open) or `signature_failed` (five invalid signatures).
+///   without executing the transfer: `expired` (no answer within the hour),
+///   `stale` (the draft, its payee's bank details or the endpoint changed
+///   while it was open), `signature_failed` (five invalid signatures) or
+///   `rail_limit_exceeded` (status `superseded`: the challenge was
+///   authorized, but the transfer was over its rail's limit when it
+///   executed, so nothing moved).
 ///
 /// `authorization` is `null` when no authorizer was enrolled.
 pub struct Payments<'a> {
@@ -42,9 +45,18 @@ impl Payments<'_> {
     /// (external transfer) or `destination_account_id` (own-account move).
     ///
     /// Optional: `external_account_id`, `currency_code`, `payment_reference`,
-    /// `internal_notes`, and `client_reference` (unique per entity, at most
+    /// `internal_notes`, `client_reference` (unique per entity, at most
     /// 128 characters; a duplicate returns a [`ErrorKind::Conflict`](crate::ErrorKind::Conflict) error
-    /// whose `payment_id` names the existing draft).
+    /// whose `payment_id` names the existing draft), and `transfer_method`
+    /// (the rail: `eft` or `rtc` in South Africa, `standard` or `instant` in
+    /// Morocco; one the market does not offer is a 422
+    /// [`ErrorKind::Validation`](crate::ErrorKind::Validation) with `param`
+    /// `transfer_method`, and nothing is created).
+    ///
+    /// The response's `transfer_method` is the rail sent, or the provider's
+    /// default when left out; `null` where the market offers no choice. The
+    /// machine-authorization signature signs it
+    /// ([`SignatureFields::transfer_method`](crate::transfer_authorization::SignatureFields::transfer_method)).
     ///
     /// The created draft awaits authorization — the API never executes a
     /// transfer itself.
@@ -62,7 +74,9 @@ impl Payments<'_> {
     ///
     /// Executes the draft. `authorization_id` comes from the
     /// `payment.authorization_requested` webhook; build `signature` with
-    /// [`transfer_authorization`](crate::transfer_authorization). Requires
+    /// [`transfer_authorization`](crate::transfer_authorization) (the v2
+    /// input, which the API verifies unless the client is pinned to
+    /// `Manza-Version: 2026-03-27`). Requires
     /// the `transfers:authorize` scope on a key other than the draft's
     /// creator (otherwise 403 `same_key_forbidden`), bound to an IP
     /// allowlist (otherwise 403 `unrestricted_api_key`). A 409
@@ -70,7 +84,12 @@ impl Payments<'_> {
     /// `authorization_busy` means a bank-detail edit, trust or trust
     /// revocation on the payee was in flight: retry. A blank signature is
     /// refused locally with [`Error::Configuration`]: the API counts it as a
-    /// failed attempt, and five fail the challenge.
+    /// failed attempt, and five fail the challenge. A valid signature on a
+    /// transfer over its rail's limit is a 422
+    /// [`ErrorKind::Validation`](crate::ErrorKind::Validation)
+    /// (`state_error`): nothing moved, the authorization is `superseded` with
+    /// `refusal_reason` `rail_limit_exceeded`, and the draft went to your
+    /// approvers.
     pub fn authorize(
         &self,
         id: &str,
