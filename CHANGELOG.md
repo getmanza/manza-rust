@@ -25,10 +25,10 @@ Ports manza-ruby 2.0.0: synced to the Manza API at getmanza/app `906ec486e5` (AP
 
 ### Added
 
-- `ErrorKind::PlanLimitReached` (`as_str()` `plan_limit_reached`; the other SDKs' `PlanLimitReachedError`, a validation subclass): a 422 whose `error_type` is `plan_limit_reached`. `ApiError::limit_kind` names what is capped (e.g. `invoices`), `limit_current` the count the entity holds and `limit_max` the cap; all three are `None` on every other error. Retrying does not help until the plan changes
+- `ErrorKind::PlanLimitReached` (`as_str()` `plan_limit_reached`; the other SDKs' `PlanLimitReachedError`, a validation subclass): a 422 whose `error_type` is `plan_limit_reached`. `ApiError::limit_kind` names what is capped (e.g. `invoices`), `limit_current` the count the entity holds and `limit_max` the cap; all three are `None` on every other error. Retrying does not help until the plan changes or the period rolls over
 - `generate_payment_link` on `invoices().create` and `invoices().update` (needs the `payment_links:write` scope; taken only while payment links are enabled for the entity). Invoice responses carry `generate_payment_link` and the embedded `account`
 - `transfer_method` on `payments().create`: `eft` or `rtc` in South Africa, `standard` or `instant` in Morocco; one the market does not offer is an `ErrorKind::Validation` error with `param` `transfer_method`. Payment responses carry `transfer_method` (the rail sent, the provider's default when left out, `null` where the market offers no choice)
-- Documented: the authorization `refusal_reason` `rail_limit_exceeded` (status `superseded`): an authorized transfer over its rail's limit at execution, sent to the approvers; the authorize call returns a 422 `ErrorKind::Validation` error (`state_error`). A non-boolean `generate_payment_link` is a 400 `ErrorKind::Validation` error
+- Documented: the authorization `refusal_reason` `rail_limit_exceeded` (status `superseded`): an authorized transfer over its rail's limit at execution, sent to the approvers; the authorize call returns a 422 `ErrorKind::Validation` error (`state_error`). A `generate_payment_link` other than a boolean, `null` or the strings `"true"`, `"false"`, `"1"` and `"0"` is a 400 `ErrorKind::Validation` error
 - Documented: the `payment.authorization_requested` webhook's `signature_input_v2` and `payment.transfer_method` (events stay `serde_json::Value`: read them from `data`), and `transfer_authorizer().get()`'s `trust_new_payees` and `new_payee_limit`
 
 ### Fixed (API side, no wire change)

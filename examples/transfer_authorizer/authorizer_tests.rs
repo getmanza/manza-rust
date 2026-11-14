@@ -34,6 +34,9 @@ fn example_payload() -> Value {
                 "id": AUTHORIZATION_ID,
                 "nonce": NONCE,
                 "expires_at": "2026-10-01T13:00:00Z",
+                // v1 on purpose: the API keeps `signature_version` and
+                // `signature_input` v1 for signers pinned to 2026-03-27 and
+                // adds `signature_input_v2` beside them.
                 "signature_version": "manza.transfer-authorization.v1"
             },
             "payment": {

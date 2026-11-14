@@ -5,7 +5,7 @@ Rust SDK for the [Manza](https://get-manza.com) API.
 ```toml
 # Cargo.toml
 [dependencies]
-manza = "1"
+manza = "2"
 ```
 
 ```rust
