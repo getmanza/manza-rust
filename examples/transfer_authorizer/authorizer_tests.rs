@@ -243,6 +243,41 @@ fn signs_the_webhooks_v2_input() {
     assert_eq!(ledger_input(), SIGNATURE_INPUT_V2);
 }
 
+// An entry the 1.x example wrote has no `transfer_method`: it still matches a
+// payment whose rail is null, and signs an empty last segment.
+#[test]
+fn a_1x_ledger_entry_without_transfer_method_authorizes_a_payment_without_a_rail() {
+    let h = Harness::new(
+        vec![route("POST", authorize_path(), vec![processing()])],
+        None,
+    );
+    std::fs::write(
+        h._dir.0.join("ledger.json"),
+        json!({ "po_8812": {
+            "payment_id": DRAFT_ID,
+            "amount": "2500.0",
+            "currency_code": "ZAR",
+            "account_id": "01958e51-7c5a-7000-8000-000000000013",
+            "payee": "ext:01958e51-7c5a-7000-8000-000000000014"
+        } })
+        .to_string(),
+    )
+    .expect("write a 1.x ledger");
+    let no_rail = SIGNATURE_INPUT_V2.strip_suffix("eft").unwrap();
+    let mut payload = example_payload();
+    payload["data"]["payment"]["transfer_method"] = Value::Null;
+    payload["data"]["signature_input_v2"] = json!(no_rail);
+
+    assert_eq!(h.deliver(&payload.to_string()), 200);
+
+    let calls = h.api.requests_to("/authorize");
+    assert_eq!(calls.len(), 1);
+    assert_eq!(
+        calls[0].body["signature"],
+        json!(manza::transfer_authorization::sign(SECRET, no_rail))
+    );
+}
+
 #[test]
 fn does_not_authorize_when_the_webhooks_v2_input_differs() {
     let h = Harness::new(vec![], Some("2500.0"));

@@ -158,7 +158,13 @@ pub(crate) fn new_api_error(
     } else {
         ErrorKind::from_status(status)
     };
-    let message = field("message").unwrap_or_else(|| status_text(status).to_owned());
+    let message = field("message").unwrap_or_else(|| {
+        if plan_limit {
+            "Plan limit reached".to_owned()
+        } else {
+            status_text(status).to_owned()
+        }
+    });
 
     Error::Api(Box::new(ApiError {
         status,

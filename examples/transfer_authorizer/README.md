@@ -6,7 +6,7 @@ Two processes and a shared ledger, matching the two-key model of [transfer autho
 |---|---|---|---|
 | `create_transfer.rs` | `create_transfer` | Creates a transfer draft, records it in `ledger.json` from the API's response, says where the API routed it (`routing.rs`) | A (`transfers:write`) |
 | `authorizer.rs` | `transfer_authorizer` | Receives `payment.authorization_requested`, verifies it, checks the ledger, signs and authorizes (or declines) | B (`transfers:authorize`) |
-| `preflight.rs` | `preflight` | Checks the setup the API shows and prints the fix for each that fails; what it cannot see (key B's IP allowlist; for a new payee, *Approve transfers to new payees* and key A's allowlist) you check by hand, as step 7 of the SDK README says | A and B |
+| `preflight.rs` | `preflight` | Checks the setup the API shows and prints the fix for each that fails; what it does not check (key B's IP allowlist; for a new payee, *Approve transfers to new payees*, which `trust_new_payees` on `transfer_authorizer().get()` shows, and key A's allowlist) you check by hand, as step 7 of the SDK README says | A and B |
 | `ledger.rs` | — | Your own record of what you created, keyed by `client_reference`. Swap it for your database | — |
 
 Since manza 2.0 every ledger entry records the draft's `transfer_method`, which the v2 signature signs. An entry written by the 1.x example has none, which reads as `null`: it still matches a draft whose `transfer_method` is null (a market with no rail choice), but the authorizer declines a draft that carries one as a mismatch. Let open challenges finish (or expire) before upgrading, or add `"transfer_method"` from `payments().get()` to those entries.

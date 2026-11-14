@@ -95,6 +95,16 @@ fn maps_422_plan_limit_reached_to_plan_limit_reached_with_kind_current_and_max()
 }
 
 #[test]
+fn plan_limit_reached_without_a_message_says_so() {
+    let e = api(error_for(
+        422,
+        r#"{"error":{"type":"plan_limit_reached","kind":"invoices","current":3,"max":3}}"#,
+    ));
+    assert_eq!(e.kind, ErrorKind::PlanLimitReached);
+    assert_eq!(e.message, "Plan limit reached");
+}
+
+#[test]
 fn keeps_any_other_422_a_plain_validation_error() {
     let e = api(error_for(
         422,
